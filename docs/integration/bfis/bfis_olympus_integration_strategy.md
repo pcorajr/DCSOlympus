@@ -1,4 +1,4 @@
-# BFIS ⇄ Olympus Simple Strategy (v2 – toward spec)
+# BFIS ⇄ Olympus Integration Strategy (v2 – ratified)
 
 **Goal**
 
@@ -6,25 +6,25 @@ keep Olympus as-is, make BFIS the external "brain" that observes, decides, and c
 
 ---
 
-### **Pre‑Ratification Tasks**
+### **Ratification Checklist (Completed)**
 
-Before finalizing this spec, we must complete:
+All pre‑ratification tasks for this spec are complete. The linked documents are now part of the canonical BFIS ⇄ Olympus integration contract.
 
 1. **Endpoint inventory**  
-   Produce a complete list of Olympus endpoints BFIS will use:
-   - Read endpoints (units, weapons, mission, airbases, bullseyes, spots, logs, drawings), including query parameters such as `fullUpdate={true|false}` and `time={lastUpdateTime}` where applicable.
-   - Command endpoints (`/olympus/command`, `/olympus/commands`).
-   - Any auxiliary endpoints used by the UI that BFIS may leverage.
+   ✅ **Completed.** See `docs/integration/bfis/bfis_olympus_endpoint_inventory.md` for the verified list of Olympus endpoints BFIS will use, including read endpoints, command endpoints, query parameters, and auxiliary frontend APIs.
 
 2. **Async command flow spec**  
-   Document the real Olympus command pattern:
-   - `PUT /olympus/command` → returns `commandHash`.
+   ✅ **Completed.** See `docs/integration/bfis/bfis_olympus_command_flow.md` for the verified Olympus async command pattern:
+   - `PUT /olympus` → returns `commandHash`.
    - `GET /olympus/commands?commandHash=...` → returns `commandExecuted` + `commandResult`.
 
 3. **BFIS action → Olympus command mapping**  
-   Build a table mapping each `BfisActionType` to concrete Olympus command names and parameter shapes (for example `SPAWN` → `spawnUnits` / `spawnAircrafts`).
+   ✅ **Completed.** See `docs/integration/bfis/bfis_action_command_mapping.md` for the mapping between each `BfisActionType` and concrete Olympus command names and payload shapes (for example `SPAWN` → `spawnAircrafts` / `spawnGroundUnits`).
 
-These become required sections in the final spec. We will dedicate time specifically to building these out.
+All three items above are **required** parts of the contract and must be kept in sync with this strategy document as BFIS evolves.
+
+**Ratified:** 2025‑11‑16  
+**Scope:** BFIS MVP integration with Olympus as defined in this repository and `docs/CONSTITUTION.md`.
 
 ---
 
