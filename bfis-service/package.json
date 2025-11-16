@@ -1,0 +1,24 @@
+{
+  "name": "@dcsolympus/bfis-service",
+  "version": "0.1.0",
+  "description": "Battlefield Intelligence Service - External intelligence and decision service for DCSOlympus",
+  "main": "build/index.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "node build/index.js",
+    "dev": "ts-node --esm src/index.ts",
+    "type-check": "tsc --noEmit"
+  },
+  "private": true,
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "uuid": "^11.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.5.1",
+    "@types/uuid": "^10.0.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.8.2"
+  }
+}

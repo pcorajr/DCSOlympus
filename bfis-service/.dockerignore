@@ -1,0 +1,3 @@
+# Standard ignores for Docker build context
+# TODO: Add appropriate ignore patterns (node_modules, .git, src, etc.)
+
