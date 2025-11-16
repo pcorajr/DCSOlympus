@@ -1,23 +1,33 @@
 /**
  * NDJSON Logger - Writes decision logs for replay and debugging.
- * 
+ *
  * Per spec: BFIS logs one line of NDJSON per decision cycle. Each line is a
  * self-contained record; no cross-file magic.
- * 
- * Required fields (per spec):
- * - ts, decisionId, missionId, serverId, bfisVersion
- * - snapshotId, snapshotSummary, snapshotSource, sessionHash
- * - model, promptHash, tokensPrompt, tokensCompletion, latencyMs, reasoningNotes
- * - actions, olympusCommands (with actionIndex, commandName, commandHash, status, error)
- * 
- * Principles:
- * - No full raw prompts or snapshots by default → hashes and summaries only
- * - One record per decision → easy to grep, replay, or audit
- * - Stable top-level field names → future tools can rely on them
- * 
- * This is the baseline spec for BFIS NDJSON logs; future fields must be added
- * without breaking these names or semantics.
- * 
- * TODO: Implement NDJSON logging with all required fields from spec.
+ *
+ * This module provides a minimal, reusable logger that appends JSON records
+ * to a configured NDJSON file. Higher-level code is responsible for shaping
+ * the record to match the BFIS decision log schema.
  */
 
+import fs from "fs";
+import path from "path";
+
+export interface NdjsonLogger {
+  log(record: unknown): Promise<void>;
+}
+
+export function createNdjsonLogger(logPath: string): NdjsonLogger {
+  const resolvedPath = path.resolve(logPath);
+  const dir = path.dirname(resolvedPath);
+
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+
+  return {
+    async log(record: unknown): Promise<void> {
+      const line = JSON.stringify(record);
+      await fs.promises.appendFile(resolvedPath, `${line}\n`, { encoding: "utf8" });
+    },
+  };
+}

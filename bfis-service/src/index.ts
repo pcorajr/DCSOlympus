@@ -1,21 +1,59 @@
 /**
  * Main entry point for BFIS service.
- * 
- * Per spec: BFIS operates in two main modes that share the same core loop:
- * - Autopilot: BFIS passively watches DCSOlympus, decides on actions on its own,
- *   and issues commands back to DCSOlympus
- * - Copilot: the player actively talks to BFIS, and BFIS uses an LLM to turn that
- *   intent into concrete actions and DCSOlympus commands
- * 
- * Main loop orchestrates:
- * 1. SnapshotReader → polls Olympus, builds snapshot
- * 2. Decider → takes snapshot + intent, produces BfisDecision
- * 3. CommandAdapter → maps actions to Olympus commands, sends them
- * 4. Logger → writes NDJSON decision log
- * 
- * The same machinery works whether BFIS is quietly automating background decisions
- * or acting as a chatty, voice-driven copilot.
- * 
- * TODO: Implement main decision loop with polling intervals and graceful shutdown.
+ *
+ * Current behavior (bootstrap phase):
+ * - Load configuration from env / creds.
+ * - Log startup metadata (version, role, Olympus endpoints).
+ * - Perform a single authenticated probe against /olympus/mission to verify connectivity.
+ * - Stay alive with a lightweight heartbeat so the container remains running.
+ *
+ * Future behavior will replace the heartbeat with the full BFIS loop:
+ * SnapshotReader → Decider → CommandAdapter → NDJSON Logger.
  */
 
+import { loadConfig } from "./config/config.js";
+import { SnapshotReader } from "./snapshot/snapshot-reader.js";
+
+async function main(): Promise<void> {
+  const config = loadConfig();
+
+  // Human-friendly startup line for docker logs.
+  console.log(
+    JSON.stringify({
+      event: "bfis-startup",
+      ts: new Date().toISOString(),
+      bfisVersion: config.bfisVersion,
+      logLevel: config.logLevel,
+      olympusFrontendBaseUrl: config.olympusFrontendBaseUrl,
+      olympusBaseUrl: config.olympusBaseUrl,
+      olympusRole: config.olympusAuth.role,
+      olympusUsername: config.olympusAuth.username,
+    })
+  );
+
+  const snapshotReader = new SnapshotReader(config);
+
+  try {
+    await snapshotReader.probeMissionOnce();
+  } catch (err) {
+    console.error(
+      JSON.stringify({
+        event: "bfis-olympus-probe-error",
+        ts: new Date().toISOString(),
+        message: err instanceof Error ? err.message : String(err),
+      })
+    );
+  }
+
+  // Minimal heartbeat to keep the process/container alive for now.
+  setInterval(() => {
+    console.log(
+      JSON.stringify({
+        event: "bfis-heartbeat",
+        ts: new Date().toISOString(),
+      })
+    );
+  }, 60_000);
+}
+
+void main();

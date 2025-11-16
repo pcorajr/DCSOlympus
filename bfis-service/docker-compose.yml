@@ -26,6 +26,8 @@ services:
       # Live-edit BFIS source and shared schemas during development.
       - ../bfis-service/src:/app/bfis-service/src
       - ../shared-schemas:/app/shared-schemas
+      # Mount local Olympus creds so BFIS can read /home/dcs/.creds/olympus_env.txt
+      - /home/dcs/.creds:/home/dcs/.creds:ro
     restart: unless-stopped
 
   bfis-service:
@@ -40,3 +42,6 @@ services:
       - BFIS_LOG_LEVEL=info
     working_dir: /app/bfis-service
     restart: unless-stopped
+    volumes:
+      # Mount local Olympus creds for production container as well.
+      - /home/dcs/.creds:/home/dcs/.creds:ro
