@@ -1,11 +1,42 @@
+version: "3.9"
+
+#
 # Docker Compose configuration for BFIS service
 #
-# Dev service: mounts src/ and shared-schemas/ as volumes for hot reload
-# Prod service: uses Dockerfile build
+# - Dev profile: mounts src/ and shared-schemas/ for hot reload with `npm run dev`
+# - Prod profile: runs compiled build with minimal runtime image
 #
-# Per spec: Dev mounts needed host folders so we don't need to rebuild every time
-# we change code, just restart the container. Prod builds everything.
-#
-# TODO: Implement dev and prod service definitions with proper volume mounts
-# and network configuration for connecting to Olympus
 
+services:
+  bfis-service-dev:
+    profiles: ["dev"]
+    build:
+      context: ..
+      dockerfile: bfis-service/Dockerfile
+    container_name: bfis-service-dev
+    environment:
+      # Olympus frontend proxy; BFIS talks to Olympus via this base URL.
+      # Adjust host/port as needed for your environment.
+      - BFIS_OLYMPUS_BASE_URL=http://192.168.1.4:3000/olympus
+      # Optional: healthcheck will curl this URL if set.
+      - BFIS_HEALTHCHECK_URL=http://192.168.1.4:3000/olympus/mission
+      - BFIS_LOG_LEVEL=debug
+    working_dir: /app/bfis-service
+    volumes:
+      # Live-edit BFIS source and shared schemas during development.
+      - ../bfis-service/src:/app/bfis-service/src
+      - ../shared-schemas:/app/shared-schemas
+    restart: unless-stopped
+
+  bfis-service:
+    profiles: ["prod"]
+    build:
+      context: ..
+      dockerfile: bfis-service/Dockerfile
+    container_name: bfis-service
+    environment:
+      - BFIS_OLYMPUS_BASE_URL=http://192.168.1.4:3000/olympus
+      - BFIS_HEALTHCHECK_URL=http://192.168.1.4:3000/olympus/mission
+      - BFIS_LOG_LEVEL=info
+    working_dir: /app/bfis-service
+    restart: unless-stopped

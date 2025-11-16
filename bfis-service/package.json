@@ -2,7 +2,7 @@
   "name": "@dcsolympus/bfis-service",
   "version": "0.1.0",
   "description": "Battlefield Intelligence Service - External intelligence and decision service for DCSOlympus",
-  "main": "build/index.js",
+  "main": "build/src/index.js",
   "type": "module",
   "scripts": {
     "build": "tsc",
