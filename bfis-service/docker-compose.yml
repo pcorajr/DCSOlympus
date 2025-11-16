@@ -1,0 +1,11 @@
+# Docker Compose configuration for BFIS service
+#
+# Dev service: mounts src/ and shared-schemas/ as volumes for hot reload
+# Prod service: uses Dockerfile build
+#
+# Per spec: Dev mounts needed host folders so we don't need to rebuild every time
+# we change code, just restart the container. Prod builds everything.
+#
+# TODO: Implement dev and prod service definitions with proper volume mounts
+# and network configuration for connecting to Olympus
+
