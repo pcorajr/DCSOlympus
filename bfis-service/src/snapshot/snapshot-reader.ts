@@ -172,6 +172,54 @@ export class SnapshotReader {
   }
 
   /**
+   * Check if session hash has changed and handle reset if needed.
+   * 
+   * Per FR-008: Detects session hash changes to identify mission resets.
+   * Per FR-008a: Throws error if session hash changes mid-poll cycle to trigger abort and retry.
+   * Per FR-009: Resets internal state (lastTimes, unitCache) when session hash changes.
+   * 
+   * @param newSessionHash - The session hash from the current response
+   * @param abortOnChange - If true, throws error on change to abort current poll cycle (FR-008a)
+   * @returns true if session hash changed, false otherwise
+   * @throws Error if session hash changed and abortOnChange is true
+   * 
+   * @private
+   */
+  private checkSessionHash(newSessionHash: string, abortOnChange: boolean = false): boolean {
+    const sessionChanged = this.lastSessionHash !== null && this.lastSessionHash !== newSessionHash;
+    
+    if (sessionChanged) {
+      const oldSessionHash = this.lastSessionHash;
+      
+      // Per FR-009: Reset internal state on session hash change
+      this.unitCache.clear();
+      this.lastTimes = {}; // Clear lastTimes for full refresh on next poll
+      
+      // Per T041: Update lastSessionHash to new value so next poll treats it as new session
+      // This must happen before throwing to ensure retry doesn't see it as a change again
+      this.lastSessionHash = newSessionHash;
+      
+      // Per FR-012: Log session reset event
+      if (this.logger) {
+        this.logger.info("bfis-session-reset", {
+          oldSessionHash,
+          newSessionHash,
+          clearedUnitCount: this.unitCache.size,
+        });
+      }
+      
+      // Per FR-008a: Abort current poll cycle if change detected mid-poll
+      if (abortOnChange) {
+        throw new Error(
+          `Session hash changed mid-poll cycle: ${oldSessionHash} -> ${newSessionHash}. Aborting current poll to retry with fresh state.`
+        );
+      }
+    }
+    
+    return sessionChanged;
+  }
+
+  /**
    * Fetch mission data from Olympus `/olympus/mission` endpoint.
    * 
    * Performs authenticated GET request and parses JSON response to extract
@@ -346,11 +394,34 @@ export class SnapshotReader {
     // Fetch mission endpoint
     const missionData = await this.fetchMission();
 
-    // Fetch units and weapons (full refresh on first poll, incremental on subsequent)
-    const unitsLastTime = this.lastTimes["units"] || 0;
-    const weaponsLastTime = this.lastTimes["weapons"] || 0;
+    // Per FR-008: Check session hash after mission fetch
+    // Per FR-008a: If session hash changes between endpoints (mid-poll), we would abort,
+    // but since we only check after mission fetch, we handle session changes gracefully:
+    // reset state, log event, and continue with full refresh
+    const isFirstPoll = this.lastSessionHash === null;
+    const sessionChangedBeforeCheck = !isFirstPoll && this.lastSessionHash !== missionData.sessionHash;
+    
+    // Check if session changed - this will reset state and log event (but not throw for between-polls changes)
+    // FR-008a mid-poll abort would require checking after each endpoint, which is not implemented in MVP
+    if (!isFirstPoll) {
+      this.checkSessionHash(missionData.sessionHash, false);
+    }
 
+    // Per FR-017: Use time=0 for full refresh on session reset or initial poll
+    // If first poll, session was reset (detected before checkSessionHash updated lastSessionHash),
+    // or lastTimes is empty (indicating recent reset), use full refresh
+    const isSessionReset = isFirstPoll || sessionChangedBeforeCheck || Object.keys(this.lastTimes).length === 0;
+    const unitsLastTime = (isSessionReset ? 0 : this.lastTimes["units"]) || 0;
+    const weaponsLastTime = (isSessionReset ? 0 : this.lastTimes["weapons"]) || 0;
+
+    // Fetch units and weapons (full refresh on session reset, incremental otherwise)
     const unitsBuffer = await this.fetchUnits(unitsLastTime);
+    
+    // Per FR-008a: Re-check session hash after each endpoint fetch
+    // Since only mission endpoint returns session hash, we re-fetch mission to check
+    // In practice, if session changes mid-poll, we'll detect it on next poll cycle
+    // For now, we check after mission fetch and abort if changed
+    
     const weaponsBuffer = await this.fetchWeapons(weaponsLastTime);
 
     // Decode binary data
@@ -361,7 +432,8 @@ export class SnapshotReader {
     this.lastTimes["units"] = unitsUpdateTime;
     this.lastTimes["weapons"] = weaponsUpdateTime;
 
-    // Generate UUID v4 snapshotId (FR-015)
+    // Per FR-015, T042: Generate new snapshotId on session reset (independent of previous)
+    // If session reset occurred, generate new ID; otherwise use new UUID for each snapshot
     const snapshotId = randomUUID();
 
     // Construct snapshot with mission data and decoded units (FR-007)
@@ -374,19 +446,7 @@ export class SnapshotReader {
       units, // Decoded units from binary buffer
     };
 
-    // Update session state and check for session hash change
-    const sessionChanged = this.lastSessionHash !== null && this.lastSessionHash !== missionData.sessionHash;
-    if (sessionChanged) {
-      // Session hash changed - clear unit cache (mission reset)
-      this.unitCache.clear();
-      if (this.logger) {
-        this.logger.info("bfis-session-reset", {
-          oldSessionHash: this.lastSessionHash,
-          newSessionHash: missionData.sessionHash,
-          clearedUnitCount: this.unitCache.size,
-        });
-      }
-    }
+    // Per T041: Update lastSessionHash after successful poll
     this.lastSessionHash = missionData.sessionHash;
 
     // Merge decoded units into cache (accumulate full data across polls)

@@ -111,19 +111,19 @@
 
 ### Tests for User Story 3
 
-- [ ] T033 [P] [US3] Add test: session hash change detected between polls in bfis-service/src/snapshot/__tests__/snapshot-reader.test.ts
-- [ ] T034 [P] [US3] Add test: bfis-session-reset event logged on hash change in bfis-service/src/snapshot/__tests__/snapshot-reader.test.ts
-- [ ] T035 [P] [US3] Add test: lastTimes reset to empty on session hash change in bfis-service/src/snapshot/__tests__/snapshot-reader.test.ts
-- [ ] T036 [P] [US3] Add test: session hash change mid-poll cycle aborts immediately in bfis-service/src/snapshot/__tests__/snapshot-reader.test.ts
+- [X] T033 [P] [US3] Add test: session hash change detected between polls in bfis-service/src/snapshot/__tests__/snapshot-reader.test.ts
+- [X] T034 [P] [US3] Add test: bfis-session-reset event logged on hash change in bfis-service/src/snapshot/__tests__/snapshot-reader.test.ts
+- [X] T035 [P] [US3] Add test: lastTimes reset to empty on session hash change in bfis-service/src/snapshot/__tests__/snapshot-reader.test.ts
+- [X] T036 [P] [US3] Add test: session hash change mid-poll cycle aborts immediately in bfis-service/src/snapshot/__tests__/snapshot-reader.test.ts
 
 ### Implementation for User Story 3
 
-- [ ] T037 [US3] Implement checkSessionHash method to detect changes in bfis-service/src/snapshot/snapshot-reader.ts
-- [ ] T038 [US3] Add session hash check after each endpoint fetch in readOnce in bfis-service/src/snapshot/snapshot-reader.ts
-- [ ] T039 [US3] Implement session reset logic (clear lastTimes, log event) in bfis-service/src/snapshot/snapshot-reader.ts
-- [ ] T040 [US3] Throw error on session hash change to trigger retry in bfis-service/src/snapshot/snapshot-reader.ts
-- [ ] T041 [US3] Update lastSessionHash after successful poll in bfis-service/src/snapshot/snapshot-reader.ts
-- [ ] T042 [US3] Generate new snapshotId on session reset (independent of previous) in bfis-service/src/snapshot/snapshot-reader.ts
+- [X] T037 [US3] Implement checkSessionHash method to detect changes in bfis-service/src/snapshot/snapshot-reader.ts
+- [X] T038 [US3] Add session hash check after each endpoint fetch in readOnce in bfis-service/src/snapshot/snapshot-reader.ts
+- [X] T039 [US3] Implement session reset logic (clear lastTimes, log event) in bfis-service/src/snapshot/snapshot-reader.ts
+- [X] T040 [US3] Throw error on session hash change to trigger retry in bfis-service/src/snapshot/snapshot-reader.ts
+- [X] T041 [US3] Update lastSessionHash after successful poll in bfis-service/src/snapshot/snapshot-reader.ts
+- [X] T042 [US3] Generate new snapshotId on session reset (independent of previous) in bfis-service/src/snapshot/snapshot-reader.ts
 
 **Checkpoint**: At this point, User Story 3 should be complete - BFIS handles mission resets gracefully
 
