@@ -1,7 +1,6 @@
 {
   "compilerOptions": {
     "outDir": "./build",
-    "rootDir": "./src",
     "allowJs": true,
     "target": "ES2023",
     "module": "NodeNext",
@@ -12,7 +11,8 @@
     "resolveJsonModule": true
   },
   "include": [
-    "./src/**/*"
+    "./src/**/*",
+    "./test-snapshot-reader.ts"
   ],
   "ts-node": {
     "esm": true

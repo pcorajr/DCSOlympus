@@ -22,8 +22,10 @@
  * - Mission/airbases/bullseyes/spots: every 5000-10000ms
  */
 
+import { v4 as randomUUID } from "uuid";
 import type { BfisConfig } from "../config/config.js";
 import type { StructuredLogger } from "../logger/structured-logger.js";
+import type { OlympusSnapshot } from "../../../shared-schemas/index.js";
 
 /**
  * Convert Olympus role to command mode header value.
@@ -151,5 +153,129 @@ export class SnapshotReader {
     if (this.logger) {
       this.logger.info("bfis-olympus-probe-ok", { url, status: res.status });
     }
+  }
+
+  /**
+   * Fetch mission data from Olympus `/olympus/mission` endpoint.
+   * 
+   * Performs authenticated GET request and parses JSON response to extract
+   * mission metadata including missionId, serverId, sessionHash, and time.
+   * 
+   * @returns Parsed mission data with missionId, serverId, sessionHash, and time
+   * @throws Error if HTTP request fails or response cannot be parsed
+   * 
+   * @private
+   */
+  private async fetchMission(): Promise<{
+    missionId: string;
+    serverId: string;
+    sessionHash: string;
+    time: string;
+  }> {
+    const { olympusBaseUrl, olympusAuth } = this.config;
+
+    // Normalize URL to remove trailing slashes
+    const base = olympusBaseUrl.replace(/\/+$/, "");
+    const url = `${base}/mission`;
+
+    const username = olympusAuth.username;
+    const password = olympusAuth.password;
+    const commandMode = roleToCommandMode(olympusAuth.role);
+    // Basic auth: base64 encode username:password
+    const basic = Buffer.from(`${username}:${password}`).toString("base64");
+
+    const res = await fetch(url, {
+      method: "GET",
+      headers: {
+        Authorization: `Basic ${basic}`,
+        "X-Command-Mode": commandMode,
+        Accept: "application/json",
+      },
+    });
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(`Failed to fetch mission: ${res.status} ${res.statusText} ${text}`);
+    }
+
+    const data = (await res.json()) as {
+      mission?: {
+        theatre?: string;
+        [key: string]: unknown;
+      };
+      time?: string | number;
+      sessionHash?: string;
+      [key: string]: unknown;
+    };
+
+    // Extract sessionHash and time from response
+    const sessionHash = data.sessionHash ?? "";
+    const timeValue = data.time ?? Date.now();
+    // Convert time to ISO 8601 string (handle both string and number formats)
+    const time = typeof timeValue === "string" ? new Date(Number(timeValue)).toISOString() : new Date(timeValue).toISOString();
+
+    // Extract missionId from mission.theatre or use sessionHash as fallback
+    const missionId = data.mission?.theatre ?? (sessionHash || "unknown");
+
+    // Extract serverId - use config base URL hostname or sessionHash as fallback
+    // In MVP, serverId is not explicitly in the response, so we derive it from config
+    const serverId = new URL(this.config.olympusBaseUrl).hostname || "localhost";
+
+    return {
+      missionId,
+      serverId,
+      sessionHash,
+      time,
+    };
+  }
+
+  /**
+   * Read a complete snapshot from Olympus endpoints.
+   * 
+   * Fetches mission data and constructs a normalized OlympusSnapshot object.
+   * For User Story 1, only fetches mission endpoint (units/weapons will be added in User Story 2).
+   * 
+   * Per FR-007: Constructs snapshot with snapshotId, missionId, serverId, sessionHash,
+   * timestamp, and decoded units array (empty for User Story 1).
+   * 
+   * Per FR-015: Generates unique snapshot ID using UUID v4 format.
+   * 
+   * Per FR-012: Logs `bfis-snapshot-read-ok` event with snapshot metadata.
+   * 
+   * @returns Complete OlympusSnapshot with mission data and empty units array
+   * @throws Error if any endpoint fetch fails or snapshot construction fails
+   * 
+   * @see FR-007, FR-012, FR-015
+   */
+  async readOnce(): Promise<OlympusSnapshot> {
+    // Fetch mission endpoint (User Story 1: only mission, units/weapons in User Story 2)
+    const missionData = await this.fetchMission();
+
+    // Generate UUID v4 snapshotId (FR-015)
+    const snapshotId = randomUUID();
+
+    // Construct snapshot with mission data and empty units array (FR-007)
+    const snapshot: OlympusSnapshot = {
+      snapshotId,
+      missionId: missionData.missionId,
+      serverId: missionData.serverId,
+      sessionHash: missionData.sessionHash,
+      time: missionData.time,
+      units: [], // Empty for User Story 1, will be populated in User Story 2
+    };
+
+    // Update session state
+    this.lastSessionHash = missionData.sessionHash;
+
+    // Log snapshot read success (FR-012)
+    if (this.logger) {
+      this.logger.info("bfis-snapshot-read-ok", {
+        snapshotId,
+        sessionHash: missionData.sessionHash,
+        unitCount: 0, // User Story 1: no units yet
+      });
+    }
+
+    return snapshot;
   }
 }

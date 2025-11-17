@@ -53,19 +53,19 @@
 
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T007 [P] [US1] Create test file for probeMissionOnce in bfis-service/src/snapshot/__tests__/snapshot-reader.test.ts
-- [ ] T008 [P] [US1] Add test: probeMissionOnce logs bfis-olympus-probe-ok on success in bfis-service/src/snapshot/__tests__/snapshot-reader.test.ts
-- [ ] T009 [P] [US1] Add test: probeMissionOnce throws error on auth failure in bfis-service/src/snapshot/__tests__/snapshot-reader.test.ts
-- [ ] T010 [P] [US1] Add test: readOnce constructs snapshot with mission data in bfis-service/src/snapshot/__tests__/snapshot-reader.test.ts
+- [X] T007 [P] [US1] Create test file for probeMissionOnce in bfis-service/src/snapshot/__tests__/snapshot-reader.test.ts
+- [X] T008 [P] [US1] Add test: probeMissionOnce logs bfis-olympus-probe-ok on success in bfis-service/src/snapshot/__tests__/snapshot-reader.test.ts
+- [X] T009 [P] [US1] Add test: probeMissionOnce throws error on auth failure in bfis-service/src/snapshot/__tests__/snapshot-reader.test.ts
+- [X] T010 [P] [US1] Add test: readOnce constructs snapshot with mission data in bfis-service/src/snapshot/__tests__/snapshot-reader.test.ts
 
 ### Implementation for User Story 1
 
-- [ ] T011 [US1] Implement fetchMission helper method in bfis-service/src/snapshot/snapshot-reader.ts
-- [ ] T012 [US1] Parse mission JSON response to extract missionId, serverId, sessionHash, time in bfis-service/src/snapshot/snapshot-reader.ts
-- [ ] T013 [US1] Implement basic readOnce method to fetch mission endpoint only in bfis-service/src/snapshot/snapshot-reader.ts
-- [ ] T014 [US1] Generate UUID v4 snapshotId using uuid package in bfis-service/src/snapshot/snapshot-reader.ts
-- [ ] T015 [US1] Construct basic OlympusSnapshot with mission data (empty units array for now) in bfis-service/src/snapshot/snapshot-reader.ts
-- [ ] T016 [US1] Log bfis-snapshot-read-ok event with snapshotId, sessionHash, unitCount=0 in bfis-service/src/snapshot/snapshot-reader.ts
+- [X] T011 [US1] Implement fetchMission helper method in bfis-service/src/snapshot/snapshot-reader.ts
+- [X] T012 [US1] Parse mission JSON response to extract missionId, serverId, sessionHash, time in bfis-service/src/snapshot/snapshot-reader.ts
+- [X] T013 [US1] Implement basic readOnce method to fetch mission endpoint only in bfis-service/src/snapshot/snapshot-reader.ts
+- [X] T014 [US1] Generate UUID v4 snapshotId using uuid package in bfis-service/src/snapshot/snapshot-reader.ts
+- [X] T015 [US1] Construct basic OlympusSnapshot with mission data (empty units array for now) in bfis-service/src/snapshot/snapshot-reader.ts
+- [X] T016 [US1] Log bfis-snapshot-read-ok event with snapshotId, sessionHash, unitCount=0 in bfis-service/src/snapshot/snapshot-reader.ts
 
 **Checkpoint**: At this point, User Story 1 should be fully functional - BFIS can connect, authenticate, and create basic snapshots with mission metadata
 

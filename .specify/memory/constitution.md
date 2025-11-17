@@ -40,7 +40,7 @@ Test critical paths and logic that tends to break. Profile before optimizing; "g
 
 **Code organization:** Follow established module pattern with focused, single-responsibility modules. Keep data access, business logic, and transport concerns decoupled. File and directory names must clearly indicate purpose.
 
-**Testing approach:** Test critical paths and logic that tends to break. Unit tests for complex algorithms. Integration tests for BFIS ⇄ Olympus contract compliance. No coverage requirements, but tests must be meaningful.
+**Testing approach:** Test critical paths and logic that tends to break. Unit tests for complex algorithms. Integration tests for BFIS ⇄ Olympus contract compliance. No coverage requirements, but tests must be meaningful. **ALL testing MUST be performed using the Docker container** - tests must run inside the BFIS Docker container environment, not directly on the host system. This prevents Node.js version mismatches, path resolution issues, and ensures consistent runtime environment.
 
 **Code review standards:** Code must be readable by someone who didn't write it (the "six months later" test). Complexity must be justified. AI-generated code must include JSDoc explaining rationale and connection to specifications.
 

@@ -237,6 +237,11 @@ This is a **personal hobby project**, not enterprise software. All decisions mus
    - File and directory names must clearly indicate purpose and follow project conventions.
 
 4. **Testing approach**
+   - **ALL testing MUST be performed using the Docker container (ABSOLUTELY PROHIBITED to test on host)**:
+     - Tests MUST run inside the BFIS Docker container environment, not directly on the host system.
+     - This prevents Node.js version mismatches, path resolution issues, and ensures consistent runtime environment.
+     - NO exceptions: unit tests, integration tests, manual test scripts - ALL must run in Docker.
+     - Test commands MUST be provided as Docker commands, not host npm/node commands.
    - Test critical paths and logic that tends to break (integration points, decision logic, data transformations).
    - Unit tests for complex algorithms and business logic.
    - Integration tests for BFIS ⇄ Olympus contract compliance (shared schemas, command mapping).

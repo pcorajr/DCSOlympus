@@ -64,13 +64,17 @@ You MUST NOT modify:
 - **Code that diverges from written spec is out of order** and must be reconciled.
 - **Shared schemas are contract** - `shared-schemas/index.ts` is the single source of truth for BFIS ⇄ Olympus data shapes.
 
-### 7. Testing Approach
+### 7. Testing Approach (NON-NEGOTIABLE)
+- **ALL testing MUST be performed using the Docker container (ABSOLUTELY PROHIBITED to test on host)**:
+  - Tests MUST run inside the BFIS Docker container environment, not directly on the host system.
+  - This prevents Node.js version mismatches, path resolution issues, and ensures consistent runtime environment.
+  - NO exceptions: unit tests, integration tests, manual test scripts - ALL must run in Docker.
+  - Test commands MUST be provided as Docker commands, not host npm/node commands.
 - **Test critical paths** - integration points, decision logic, data transformations.
 - **Unit tests for complex algorithms** and business logic.
 - **Integration tests for contract compliance** - BFIS ⇄ Olympus shared schemas, command mapping.
 - **No coverage requirements**, but tests must be meaningful and maintainable.
 - **Test file location (ABSOLUTELY PROHIBITED):** Tests MUST be saved to the correct test folder for the component you are working on. It is **ABSOLUTELY PROHIBITED** to save tests to the repository root. Tests must be co-located with the code they test (e.g., `bfis-service/src/snapshot/__tests__/` for snapshot tests).
-- **All testing MUST be performed using the Docker container** - tests must run inside the BFIS Docker container environment, not directly on the host system.
 
 ### 7.1 Testing Pattern (Wireframe Style)
 - **Wireframe test suites, not one-off tests**:

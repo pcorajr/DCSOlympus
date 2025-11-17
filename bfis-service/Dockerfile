@@ -15,7 +15,10 @@ WORKDIR /app
 # Copy BFIS service metadata and config
 COPY bfis-service/package*.json bfis-service/tsconfig.json ./bfis-service/
 
-# Copy shared schemas so TypeScript can compile imports from ../shared-schemas
+# Copy shared schemas so TypeScript can compile imports from ../../../shared-schemas
+# In Docker build, shared-schemas is at /app/shared-schemas, and bfis-service is at /app/bfis-service
+# So from bfis-service/src, the path is ../../shared-schemas, but we use ../../../shared-schemas
+# to match repo structure. We'll create a symlink or adjust the path.
 COPY shared-schemas ./shared-schemas
 
 WORKDIR /app/bfis-service
@@ -26,6 +29,9 @@ RUN npm install
 
 # Copy source code
 COPY bfis-service/src ./src
+
+# Copy test script (for manual testing in Docker)
+COPY bfis-service/test-snapshot-reader.ts ./test-snapshot-reader.ts
 
 # Compile TypeScript
 RUN npm run build
