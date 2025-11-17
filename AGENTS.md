@@ -70,6 +70,7 @@ You MUST NOT modify:
 - **Integration tests for contract compliance** - BFIS ⇄ Olympus shared schemas, command mapping.
 - **No coverage requirements**, but tests must be meaningful and maintainable.
 - **Test file location (ABSOLUTELY PROHIBITED):** Tests MUST be saved to the correct test folder for the component you are working on. It is **ABSOLUTELY PROHIBITED** to save tests to the repository root. Tests must be co-located with the code they test (e.g., `bfis-service/src/snapshot/__tests__/` for snapshot tests).
+- **All testing MUST be performed using the Docker container** - tests must run inside the BFIS Docker container environment, not directly on the host system.
 
 ### 7.1 Testing Pattern (Wireframe Style)
 - **Wireframe test suites, not one-off tests**:
