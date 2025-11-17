@@ -34,6 +34,10 @@
 - [ ] T004 Create unit decoder module structure in bfis-service/src/snapshot/unit-decoder.ts
 - [ ] T005 Create weapon decoder module structure in bfis-service/src/snapshot/weapon-decoder.ts
 - [ ] T006 Add session state tracking fields to SnapshotReader class in bfis-service/src/snapshot/snapshot-reader.ts
+- [ ] T006a [P] Review and update probeMissionOnce JSDoc and logging to align with FR-002 and constitution in bfis-service/src/snapshot/snapshot-reader.ts
+- [ ] T006b Create polling loop module in bfis-service/src/runtime/polling-loop.ts with readOnce() at configured intervals, session hash handling, and error logging/backoff
+
+**Note**: FR-002 (initial connectivity probe) is already implemented via `probeMissionOnce()` method. Task T006a ensures documentation alignment.
 
 **Checkpoint**: Foundation ready - user story implementation can now begin
 
@@ -148,6 +152,7 @@
 - [ ] T052 [US4] Implement fetchSpots helper method in bfis-service/src/snapshot/snapshot-reader.ts
 - [ ] T053 [US4] Implement fetchDrawings helper method in bfis-service/src/snapshot/snapshot-reader.ts
 - [ ] T054 [US4] Update readOnce to fetch all endpoints in specified order (FR-016) in bfis-service/src/snapshot/snapshot-reader.ts
+- [ ] T054a [US4] Integrate polling loop into main entry point (replace heartbeat with loop.start()) in bfis-service/src/index.ts
 - [ ] T055 [US4] Extract updateTime from binary buffers (first 8 bytes uint64) in bfis-service/src/snapshot/snapshot-reader.ts
 - [ ] T056 [US4] Update lastTimes from response time fields and binary updateTime in bfis-service/src/snapshot/snapshot-reader.ts
 - [ ] T057 [US4] Use time=0 for full refresh on initial poll or session reset in bfis-service/src/snapshot/snapshot-reader.ts
@@ -164,6 +169,9 @@
 - [ ] T059 [P] Implement binary decode error handling with structured logging (bfis-snapshot-decode-error) in bfis-service/src/snapshot/snapshot-reader.ts
 - [ ] T060 [P] Implement empty data detection and warning logging (bfis-snapshot-empty-data) in bfis-service/src/snapshot/snapshot-reader.ts
 - [ ] T061 [P] Add data size metrics (buffer sizes, unit count) to bfis-snapshot-read-ok logs in bfis-service/src/snapshot/snapshot-reader.ts
+- [ ] T061a [P] Implement baseline establishment for large data detection (first N snapshots, configurable via BFIS_LARGE_DATA_BASELINE_SAMPLES) in bfis-service/src/snapshot/snapshot-reader.ts
+- [ ] T061b [P] Implement large data warning logic (configurable multiplier via BFIS_LARGE_DATA_MULTIPLIER, default 2x baseline) in bfis-service/src/snapshot/snapshot-reader.ts
+- [ ] T061c [P] Add incremental update logging (bfis-binary-fetch event with mode: full|incremental, bytes, endpoint) for SC-006 measurement in bfis-service/src/snapshot/snapshot-reader.ts
 - [ ] T062 [P] Implement partial failure handling (fail entire snapshot, no partial snapshots) in bfis-service/src/snapshot/snapshot-reader.ts
 - [ ] T063 [P] Add input validation for OlympusSnapshot fields (UUID format, coordinate ranges) in bfis-service/src/snapshot/snapshot-reader.ts
 - [ ] T064 [P] Ensure snapshot immutability (no mutation after creation) in bfis-service/src/snapshot/snapshot-reader.ts
@@ -172,6 +180,7 @@
 - [ ] T067 [P] Add comprehensive JSDoc comments to weapon-decoder.ts in bfis-service/src/snapshot/weapon-decoder.ts
 - [ ] T068 [P] Run all tests in Docker container to verify Docker testing setup in bfis-service/
 - [ ] T069 [P] Verify all structured log events match spec requirements in bfis-service/src/snapshot/snapshot-reader.ts
+- [ ] T070 [P] Add test for incremental update size reduction (SC-006) comparing full vs incremental fetch sizes in bfis-service/src/snapshot/__tests__/snapshot-reader.test.ts
 
 ---
 
@@ -180,7 +189,7 @@
 ### Phase Dependencies
 
 - **Setup (Phase 1)**: No dependencies - can start immediately
-- **Foundational (Phase 2)**: Depends on Setup completion - BLOCKS all user stories
+- **Foundational (Phase 2)**: Depends on Setup completion - BLOCKS all user stories. Task T006b (polling loop) is foundational infrastructure that User Story 4 will integrate with.
 - **User Stories (Phase 3+)**: All depend on Foundational phase completion
   - User Story 1 (P1) can start after Foundational
   - User Story 2 (P1) depends on User Story 1 (needs basic snapshot structure)
@@ -193,7 +202,7 @@
 - **User Story 1 (P1)**: Can start after Foundational (Phase 2) - No dependencies on other stories
 - **User Story 2 (P1)**: Depends on User Story 1 (needs snapshot structure and mission fetching) - Can be tested independently with mock buffers
 - **User Story 3 (P2)**: Depends on User Story 1 (needs session hash from mission response) - Can be tested independently by mocking session hash changes
-- **User Story 4 (P2)**: Depends on User Stories 1-2 (needs all endpoints and decoding) - Can be tested independently with mocked endpoints
+- **User Story 4 (P2)**: Depends on User Stories 1-2 (needs all endpoints and decoding) - Can be tested independently with mocked endpoints. Task T054a depends on T006b (polling loop must exist before integration)
 
 ### Within Each User Story
 
@@ -205,12 +214,12 @@
 ### Parallel Opportunities
 
 - **Phase 1**: All tasks marked [P] can run in parallel (T001, T002, T003)
-- **Phase 2**: All tasks marked [P] can run in parallel (T004, T005, T006)
+- **Phase 2**: Tasks T004, T005, T006a can run in parallel; T006b depends on T006 (session state)
 - **Phase 3 (US1)**: Tests (T007-T010) can run in parallel
 - **Phase 4 (US2)**: Tests (T017-T022) can run in parallel
 - **Phase 5 (US3)**: Tests (T033-T036) can run in parallel
 - **Phase 6 (US4)**: Tests (T043-T046) can run in parallel
-- **Phase 7**: All tasks marked [P] can run in parallel (T058-T069)
+- **Phase 7**: All tasks marked [P] can run in parallel (T058-T070)
 
 ---
 

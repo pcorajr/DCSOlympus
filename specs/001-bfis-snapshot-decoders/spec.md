@@ -111,7 +111,7 @@ BFIS must retrieve data from multiple Olympus endpoints (mission, units, weapons
 - **FR-013**: System MUST handle HTTP errors gracefully without crashing, logging errors with URL, status, and message context. If any endpoint fails during a poll cycle, the entire snapshot MUST fail (no partial snapshots returned) and the system MUST retry on the next poll cycle
 - **FR-014**: System MUST handle binary decode errors by logging with context and allowing retry on next poll cycle
 - **FR-014a**: System MUST treat empty data responses (e.g., zero units, empty logs) as valid snapshots but log a warning indicating empty data was received
-- **FR-014b**: System MUST process binary buffers and unit counts of any size. System MUST log data sizes (buffer size in bytes, unit count) in snapshot read events to establish baseline patterns, then log warnings for unusually large data once baseline is established
+- **FR-014b**: System MUST process binary buffers and unit counts of any size. System MUST log data sizes (buffer size in bytes, unit count) in snapshot read events to establish baseline patterns, then log warnings for unusually large data once baseline is established. Baseline establishment: Use first N snapshots (configurable via `BFIS_LARGE_DATA_BASELINE_SAMPLES`, default 10) to compute average byte size per endpoint. Warning threshold: Configurable multiplier on baseline (via `BFIS_LARGE_DATA_MULTIPLIER`, default 2.0x baseline). Simple, deterministic approach for MVP; sophisticated statistics can be post-MVP enhancement.
 - **FR-015**: System MUST generate unique snapshot IDs for each snapshot using UUID v4 (random UUID) format, independent of previous snapshots
 - **FR-016**: System MUST fetch endpoints in specified order: mission, units (binary), weapons (binary), logs, then airbases/bullseyes/spots/drawings
 - **FR-017**: System MUST perform full data refresh (time=0) when session hash changes or on initial poll
@@ -136,7 +136,7 @@ BFIS must retrieve data from multiple Olympus endpoints (mission, units, weapons
 - **SC-003**: BFIS correctly decodes binary unit/weapon buffers matching Olympus format with 100% accuracy for valid buffers
 - **SC-004**: BFIS detects session hash changes and resets state within one poll cycle (detection latency < polling interval)
 - **SC-005**: BFIS handles network errors and authentication failures without service crashes, logging all errors with sufficient context for debugging
-- **SC-006**: BFIS processes incremental updates (using time query parameters) reducing data transfer by at least 50% compared to full refreshes when no changes occur
+- **SC-006**: BFIS processes incremental updates (using time query parameters) reducing data transfer by at least 50% compared to full refreshes when no changes occur. Measurement: Log `bfis-binary-fetch` events with `mode: "full|incremental"`, `bytes`, and `endpoint` fields. Compare incremental fetch size (time=lastTime) vs full refresh size (time=0) under "no-change" conditions. The 50% reduction is a soft target validated via logs/metrics during implementation, with testable assertions in controlled test scenarios.
 - **SC-007**: All snapshot operations produce structured log events that can be parsed and analyzed programmatically
 - **SC-008**: BFIS maintains snapshot data integrity - snapshots accurately reflect Olympus' reported state at the time of polling with no data corruption or loss
 

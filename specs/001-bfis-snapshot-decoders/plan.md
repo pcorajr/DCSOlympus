@@ -25,7 +25,7 @@ Implement the foundational BFIS capability to observe battlefield state from Oly
 
 **Storage**: In-memory only (no persistent storage). Session state (lastSessionHash, lastTimes) maintained in `SnapshotReader` instance.  
 **Testing**: 
-- Test framework: Node.js built-in test runner or Jest (to be determined in research phase)
+- Test framework: Node.js built-in test runner (Node.js 20+ built-in, no external dependencies)
 - All tests run in Docker container per AGENTS.md requirements
 - Test location: `bfis-service/src/snapshot/__tests__/` (co-located with code)
 
@@ -140,6 +140,8 @@ bfis-service/
 │   │       ├── binary-decoder.test.ts
 │   │       ├── unit-decoder.test.ts
 │   │       └── weapon-decoder.test.ts
+│   ├── runtime/
+│   │   └── polling-loop.ts           # NEW: Main polling loop orchestrator
 │   ├── types/
 │   │   └── internal.ts               # Internal BFIS types (BfisLatLng, etc. - already exists)
 │   ├── config/
