@@ -19,9 +19,9 @@
 
 **Purpose**: Project initialization and shared schema definitions
 
-- [ ] T001 [P] Extend shared schemas with OlympusSnapshot interfaces in shared-schemas/index.ts
-- [ ] T002 [P] Create DataIndexes enum constants in bfis-service/src/snapshot/data-indexes.ts
-- [ ] T003 [P] Create coalition conversion helper function in bfis-service/src/snapshot/coalition-helper.ts
+- [X] T001 [P] Extend shared schemas with OlympusSnapshot interfaces in shared-schemas/index.ts
+- [X] T002 [P] Create DataIndexes enum constants in bfis-service/src/snapshot/data-indexes.ts
+- [X] T003 [P] Create coalition conversion helper function in bfis-service/src/snapshot/coalition-helper.ts
 
 ---
 
