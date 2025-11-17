@@ -1,0 +1,36 @@
+# DCSOlympus Development Guidelines
+
+Auto-generated from all feature plans. Last updated: 2025-11-16
+
+## Active Technologies
+
+- TypeScript 5.8.2 / Node.js 20+ (ES2023, NodeNext module resolution) (001-bfis-snapshot-decoders)
+
+## Project Structure
+
+```text
+src/
+tests/
+```
+
+## Commands
+
+npm test && npm run lint
+Docker scripts are located in the root directory.
+Always use the docker scripts to start and stop the stack.
+Always Test by using the docker container.
+
+## Code Style
+
+TypeScript 5.8.2 / Node.js 20+ (ES2023, NodeNext module resolution): Follow standard conventions
+
+## Recent Changes
+
+- 001-bfis-snapshot-decoders: Added TypeScript 5.8.2 / Node.js 20+ (ES2023, NodeNext module resolution)
+
+<!-- MANUAL ADDITIONS START -->
+Do not make use of emojis in at any time on any file.
+Follow AGENTS.md for code style.
+constitution is the highest authority.
+DCSOlympus code is read-only.
+<!-- MANUAL ADDITIONS END -->

@@ -5,6 +5,16 @@
 **Status**: Draft  
 **Input**: User description: "@spec-001.md  already created spec folder :specs/001-bfis-snapshot-decoders"
 
+## Clarifications
+
+### Session 2025-11-16
+
+- Q: When a poll cycle has mixed results (some endpoints succeed, others fail), should BFIS return a partial snapshot or fail the entire snapshot? → A: Fail entire snapshot, log error, retry on next poll cycle
+- Q: How should unique snapshot IDs be generated? → A: UUID v4 (random UUID)
+- Q: When a poll returns empty data (e.g., zero units, empty logs), should BFIS treat this as valid or error? → A: Treat as valid snapshot but log warning (empty data is unusual but acceptable)
+- Q: If session hash changes between endpoints during a poll cycle, how should BFIS handle this? → A: Abort current poll immediately, reset state, retry full poll cycle
+- Q: Should BFIS enforce size limits on binary buffers or unit counts? → A: Process any size, log data sizes to establish baseline, then log warnings for unusually large data once baseline is established
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - BFIS Observes Battlefield State (Priority: P1)
@@ -76,10 +86,10 @@ BFIS must retrieve data from multiple Olympus endpoints (mission, units, weapons
 - What happens when Olympus is unreachable or returns network errors?
 - How does system handle authentication failures (401/403)?
 - What happens when binary buffer format is corrupted or unexpected?
-- How does system handle partial failures (some endpoints succeed, others fail)?
-- What happens when session hash changes mid-poll cycle?
-- How does system handle very large binary buffers or high unit counts?
-- What happens when time query parameters result in no new data?
+- How does system handle partial failures (some endpoints succeed, others fail)? → System fails the entire snapshot, logs the error, and retries on next poll cycle (no partial snapshots returned)
+- What happens when session hash changes mid-poll cycle? → System aborts current poll immediately, resets state, and retries full poll cycle to ensure data consistency
+- How does system handle very large binary buffers or high unit counts? → System processes any size, logs data sizes (buffer size, unit count) to establish baseline, then logs warnings for unusually large data once baseline patterns are established
+- What happens when time query parameters result in no new data? → System treats empty data as valid snapshot but logs a warning (empty data is unusual but acceptable, e.g., no units in mission or no new logs)
 
 ## Requirements *(mandatory)*
 
@@ -93,13 +103,16 @@ BFIS must retrieve data from multiple Olympus endpoints (mission, units, weapons
 - **FR-006**: System MUST extract the leading 8-byte update time (uint64) from binary buffers before decoding data
 - **FR-007**: System MUST construct an internal snapshot object that includes snapshot ID, mission ID, server ID, session hash, timestamp, and decoded units array
 - **FR-008**: System MUST track session hash from every Olympus response and detect changes
+- **FR-008a**: System MUST abort current poll cycle immediately if session hash changes between endpoints, reset state, and retry full poll cycle to ensure data consistency
 - **FR-009**: System MUST reset internal state (lastTime values, caches) when session hash changes
 - **FR-010**: System MUST use time-based query parameters for units, weapons, and logs endpoints to support incremental updates
 - **FR-011**: System MUST update lastTime state from response time fields and binary buffer leading uint64 values
-- **FR-012**: System MUST log all snapshot operations using structured logging (bfis-olympus-probe-ok, bfis-snapshot-read-ok, bfis-session-reset, bfis-snapshot-http-error, bfis-snapshot-decode-error)
-- **FR-013**: System MUST handle HTTP errors gracefully without crashing, logging errors with URL, status, and message context
+- **FR-012**: System MUST log all snapshot operations using structured logging (bfis-olympus-probe-ok, bfis-snapshot-read-ok, bfis-session-reset, bfis-snapshot-http-error, bfis-snapshot-decode-error). Snapshot read events MUST include data size metrics (buffer size in bytes, unit count) to establish baseline patterns
+- **FR-013**: System MUST handle HTTP errors gracefully without crashing, logging errors with URL, status, and message context. If any endpoint fails during a poll cycle, the entire snapshot MUST fail (no partial snapshots returned) and the system MUST retry on the next poll cycle
 - **FR-014**: System MUST handle binary decode errors by logging with context and allowing retry on next poll cycle
-- **FR-015**: System MUST generate unique snapshot IDs for each snapshot, independent of previous snapshots
+- **FR-014a**: System MUST treat empty data responses (e.g., zero units, empty logs) as valid snapshots but log a warning indicating empty data was received
+- **FR-014b**: System MUST process binary buffers and unit counts of any size. System MUST log data sizes (buffer size in bytes, unit count) in snapshot read events to establish baseline patterns, then log warnings for unusually large data once baseline is established
+- **FR-015**: System MUST generate unique snapshot IDs for each snapshot using UUID v4 (random UUID) format, independent of previous snapshots
 - **FR-016**: System MUST fetch endpoints in specified order: mission, units (binary), weapons (binary), logs, then airbases/bullseyes/spots/drawings
 - **FR-017**: System MUST perform full data refresh (time=0) when session hash changes or on initial poll
 - **FR-018**: System MUST maintain immutable snapshot objects that are not mutated after creation
