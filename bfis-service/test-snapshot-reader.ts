@@ -57,6 +57,10 @@ async function main(): Promise<void> {
     // Test readOnce
     console.log("4. Testing readOnce (snapshot construction)...");
     try {
+      // Force full refresh by clearing lastTimes (ensures we get complete unit data)
+      // Access private field via type assertion for testing
+      (reader as any).lastTimes = {};
+      
       const snapshot = await reader.readOnce();
       
       console.log("   ✓ Snapshot created successfully!\n");
@@ -66,7 +70,25 @@ async function main(): Promise<void> {
       console.log(`   - serverId: ${snapshot.serverId}`);
       console.log(`   - sessionHash: ${snapshot.sessionHash}`);
       console.log(`   - time: ${snapshot.time}`);
-      console.log(`   - units: ${snapshot.units.length} (empty for User Story 1)\n`);
+      console.log(`   - units: ${snapshot.units.length}\n`);
+      
+      // Display detailed unit information
+      if (snapshot.units.length > 0) {
+        console.log("   Units found:");
+        snapshot.units.forEach((unit, i) => {
+          console.log(`   ${i + 1}. Unit ID: ${unit.unitId}`);
+          console.log(`      - Category: ${unit.category}`);
+          console.log(`      - Coalition: ${unit.coalition}`);
+          console.log(`      - Unit Type: ${unit.unitType}`);
+          console.log(`      - Name: ${unit.name || "N/A"}`);
+          console.log(`      - Position: (${unit.position.lat.toFixed(6)}, ${unit.position.lon.toFixed(6)}, ${unit.position.altMeters.toFixed(1)}m)`);
+          if (unit.groupId) console.log(`      - Group ID: ${unit.groupId}`);
+          if (unit.status) console.log(`      - Status: ${unit.status}`);
+          console.log();
+        });
+      } else {
+        console.log("   No units found in snapshot.\n");
+      }
       
       // Print full snapshot JSON
       console.log("   Full snapshot JSON:");
@@ -82,7 +104,7 @@ async function main(): Promise<void> {
         { name: "sessionHash is non-empty", pass: snapshot.sessionHash.length > 0 },
         { name: "time is ISO 8601", pass: /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(snapshot.time) },
         { name: "units is array", pass: Array.isArray(snapshot.units) },
-        { name: "units is empty (User Story 1)", pass: snapshot.units.length === 0 },
+        { name: "units have required fields", pass: snapshot.units.length === 0 || snapshot.units.every(u => u.unitId && u.category && u.coalition && u.position) },
       ];
 
       let allPassed = true;
@@ -100,12 +122,13 @@ async function main(): Promise<void> {
       }
 
       console.log("=== Test Complete ===");
-      console.log("\nUser Story 1 is working correctly!");
+      console.log("\nUser Story 2 is working correctly!");
       console.log("BFIS can now:");
       console.log("  - Connect to Olympus");
       console.log("  - Authenticate successfully");
       console.log("  - Retrieve mission data");
-      console.log("  - Construct snapshots with mission metadata\n");
+      console.log("  - Fetch and decode binary unit data");
+      console.log("  - Construct snapshots with complete unit information\n");
 
     } catch (err) {
       console.error("   ✗ readOnce failed:", err instanceof Error ? err.message : String(err));

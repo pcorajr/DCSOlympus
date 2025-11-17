@@ -25,7 +25,9 @@
 import { v4 as randomUUID } from "uuid";
 import type { BfisConfig } from "../config/config.js";
 import type { StructuredLogger } from "../logger/structured-logger.js";
-import type { OlympusSnapshot } from "../../../shared-schemas/index.js";
+import type { OlympusSnapshot, OlympusUnit } from "../../../shared-schemas/index.js";
+import { decodeUnits } from "./unit-decoder.js";
+import { decodeWeapons } from "./weapon-decoder.js";
 
 /**
  * Convert Olympus role to command mode header value.
@@ -88,6 +90,20 @@ export class SnapshotReader {
    * @see FR-010, FR-011
    */
   private lastTimes: Record<string, number> = {};
+
+  /**
+   * Unit state cache - accumulates full unit data across multiple polls.
+   * 
+   * Key: unitId (string)
+   * Value: Complete OlympusUnit with all fields populated
+   * 
+   * This matches the frontend UnitsManager pattern: maintain state between polls
+   * and merge incremental updates. Delta encoding means we only get changed fields,
+   * so we need to accumulate data over multiple cycles to get complete unit info.
+   * 
+   * Cache is cleared on session hash changes (mission reset).
+   */
+  private unitCache: Map<string, OlympusUnit> = new Map();
 
   /**
    * Create a new SnapshotReader with the given configuration.
@@ -230,52 +246,189 @@ export class SnapshotReader {
   }
 
   /**
+   * Fetch binary units data from Olympus `/olympus/units` endpoint.
+   * 
+   * Per FR-010: Uses time query parameter for incremental updates.
+   * Returns the raw ArrayBuffer for decoding.
+   * 
+   * @param lastTime - Optional last update time for incremental fetch (0 for full refresh)
+   * @returns ArrayBuffer containing binary units data
+   * @throws Error if fetch fails
+   * 
+   * @see FR-010, FR-011
+   */
+  private async fetchUnits(lastTime: number = 0): Promise<ArrayBuffer> {
+    const { olympusBaseUrl, olympusAuth } = this.config;
+    const base = olympusBaseUrl.replace(/\/+$/, "");
+    const url = lastTime > 0 ? `${base}/units?time=${lastTime}` : `${base}/units`;
+
+    const username = olympusAuth.username;
+    const password = olympusAuth.password;
+    const commandMode = roleToCommandMode(olympusAuth.role);
+    const basic = Buffer.from(`${username}:${password}`).toString("base64");
+
+    const res = await fetch(url, {
+      method: "GET",
+      headers: {
+        Authorization: `Basic ${basic}`,
+        "X-Command-Mode": commandMode,
+        Accept: "application/octet-stream",
+      },
+    });
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(`Failed to fetch units: ${res.status} ${res.statusText} ${text}`);
+    }
+
+    return await res.arrayBuffer();
+  }
+
+  /**
+   * Fetch binary weapons data from Olympus `/olympus/weapons` endpoint.
+   * 
+   * Per FR-010: Uses time query parameter for incremental updates.
+   * Returns the raw ArrayBuffer for decoding.
+   * 
+   * @param lastTime - Optional last update time for incremental fetch (0 for full refresh)
+   * @returns ArrayBuffer containing binary weapons data
+   * @throws Error if fetch fails
+   * 
+   * @see FR-010, FR-011
+   */
+  private async fetchWeapons(lastTime: number = 0): Promise<ArrayBuffer> {
+    const { olympusBaseUrl, olympusAuth } = this.config;
+    const base = olympusBaseUrl.replace(/\/+$/, "");
+    const url = lastTime > 0 ? `${base}/weapons?time=${lastTime}` : `${base}/weapons`;
+
+    const username = olympusAuth.username;
+    const password = olympusAuth.password;
+    const commandMode = roleToCommandMode(olympusAuth.role);
+    const basic = Buffer.from(`${username}:${password}`).toString("base64");
+
+    const res = await fetch(url, {
+      method: "GET",
+      headers: {
+        Authorization: `Basic ${basic}`,
+        "X-Command-Mode": commandMode,
+        Accept: "application/octet-stream",
+      },
+    });
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(`Failed to fetch weapons: ${res.status} ${res.statusText} ${text}`);
+    }
+
+    return await res.arrayBuffer();
+  }
+
+  /**
    * Read a complete snapshot from Olympus endpoints.
    * 
-   * Fetches mission data and constructs a normalized OlympusSnapshot object.
-   * For User Story 1, only fetches mission endpoint (units/weapons will be added in User Story 2).
+   * Fetches mission, units, and weapons data and constructs a normalized OlympusSnapshot object.
    * 
    * Per FR-007: Constructs snapshot with snapshotId, missionId, serverId, sessionHash,
-   * timestamp, and decoded units array (empty for User Story 1).
+   * timestamp, and decoded units array.
    * 
    * Per FR-015: Generates unique snapshot ID using UUID v4 format.
    * 
    * Per FR-012: Logs `bfis-snapshot-read-ok` event with snapshot metadata.
    * 
-   * @returns Complete OlympusSnapshot with mission data and empty units array
+   * Per FR-010: Uses time query parameters for incremental updates (full refresh on first poll).
+   * 
+   * @returns Complete OlympusSnapshot with mission data and decoded units
    * @throws Error if any endpoint fetch fails or snapshot construction fails
    * 
-   * @see FR-007, FR-012, FR-015
+   * @see FR-007, FR-010, FR-012, FR-015
    */
   async readOnce(): Promise<OlympusSnapshot> {
-    // Fetch mission endpoint (User Story 1: only mission, units/weapons in User Story 2)
+    // Fetch mission endpoint
     const missionData = await this.fetchMission();
+
+    // Fetch units and weapons (full refresh on first poll, incremental on subsequent)
+    const unitsLastTime = this.lastTimes["units"] || 0;
+    const weaponsLastTime = this.lastTimes["weapons"] || 0;
+
+    const unitsBuffer = await this.fetchUnits(unitsLastTime);
+    const weaponsBuffer = await this.fetchWeapons(weaponsLastTime);
+
+    // Decode binary data
+    const { updateTime: unitsUpdateTime, units } = decodeUnits(unitsBuffer, this.logger);
+    const { updateTime: weaponsUpdateTime } = decodeWeapons(weaponsBuffer);
+
+    // Update lastTimes from decoded updateTime values
+    this.lastTimes["units"] = unitsUpdateTime;
+    this.lastTimes["weapons"] = weaponsUpdateTime;
 
     // Generate UUID v4 snapshotId (FR-015)
     const snapshotId = randomUUID();
 
-    // Construct snapshot with mission data and empty units array (FR-007)
+    // Construct snapshot with mission data and decoded units (FR-007)
     const snapshot: OlympusSnapshot = {
       snapshotId,
       missionId: missionData.missionId,
       serverId: missionData.serverId,
       sessionHash: missionData.sessionHash,
       time: missionData.time,
-      units: [], // Empty for User Story 1, will be populated in User Story 2
+      units, // Decoded units from binary buffer
     };
 
-    // Update session state
+    // Update session state and check for session hash change
+    const sessionChanged = this.lastSessionHash !== null && this.lastSessionHash !== missionData.sessionHash;
+    if (sessionChanged) {
+      // Session hash changed - clear unit cache (mission reset)
+      this.unitCache.clear();
+      if (this.logger) {
+        this.logger.info("bfis-session-reset", {
+          oldSessionHash: this.lastSessionHash,
+          newSessionHash: missionData.sessionHash,
+          clearedUnitCount: this.unitCache.size,
+        });
+      }
+    }
     this.lastSessionHash = missionData.sessionHash;
+
+    // Merge decoded units into cache (accumulate full data across polls)
+    // Delta encoding means we only get changed fields, so we merge updates into cached state
+    for (const unit of units) {
+      const existingUnit = this.unitCache.get(unit.unitId);
+      if (existingUnit) {
+        // Merge: update existing unit with new data (new fields override old)
+        this.unitCache.set(unit.unitId, {
+          ...existingUnit,
+          ...unit,
+          // Preserve position if new one is default (0,0,0) and we have a real position
+          position: unit.position.lat === 0 && unit.position.lon === 0 && unit.position.altMeters === 0
+            ? existingUnit.position
+            : unit.position,
+        });
+      } else {
+        // New unit - add to cache
+        this.unitCache.set(unit.unitId, unit);
+      }
+    }
+
+    // Return snapshot with accumulated units from cache
+    const accumulatedUnits: OlympusUnit[] = Array.from(this.unitCache.values());
+    const snapshotWithCache: OlympusSnapshot = {
+      ...snapshot,
+      units: accumulatedUnits,
+    };
 
     // Log snapshot read success (FR-012)
     if (this.logger) {
       this.logger.info("bfis-snapshot-read-ok", {
         snapshotId,
         sessionHash: missionData.sessionHash,
-        unitCount: 0, // User Story 1: no units yet
+        unitCount: accumulatedUnits.length,
+        newUnitsInPoll: units.length,
+        cachedUnitsTotal: this.unitCache.size,
+        unitsBufferSize: unitsBuffer.byteLength,
+        weaponsBufferSize: weaponsBuffer.byteLength,
       });
     }
 
-    return snapshot;
+    return snapshotWithCache;
   }
 }

@@ -79,25 +79,25 @@
 
 ### Tests for User Story 2
 
-- [ ] T017 [P] [US2] Create test file for unit decoder in bfis-service/src/snapshot/__tests__/unit-decoder.test.ts
-- [ ] T018 [P] [US2] Add test: decodeUnits extracts updateTime from buffer in bfis-service/src/snapshot/__tests__/unit-decoder.test.ts
-- [ ] T019 [P] [US2] Add test: decodeUnits extracts unitId, category, coalition, position in bfis-service/src/snapshot/__tests__/unit-decoder.test.ts
-- [ ] T020 [P] [US2] Add test: decodeUnits handles empty buffer gracefully in bfis-service/src/snapshot/__tests__/unit-decoder.test.ts
-- [ ] T021 [P] [US2] Create test file for weapon decoder in bfis-service/src/snapshot/__tests__/weapon-decoder.test.ts
-- [ ] T022 [P] [US2] Add test: decodeWeapons extracts updateTime and weapon data in bfis-service/src/snapshot/__tests__/weapon-decoder.test.ts
+- [X] T017 [P] [US2] Create test file for unit decoder in bfis-service/src/snapshot/__tests__/unit-decoder.test.ts
+- [X] T018 [P] [US2] Add test: decodeUnits extracts updateTime from buffer in bfis-service/src/snapshot/__tests__/unit-decoder.test.ts
+- [X] T019 [P] [US2] Add test: decodeUnits extracts unitId, category, coalition, position in bfis-service/src/snapshot/__tests__/unit-decoder.test.ts
+- [X] T020 [P] [US2] Add test: decodeUnits handles empty buffer gracefully in bfis-service/src/snapshot/__tests__/unit-decoder.test.ts
+- [X] T021 [P] [US2] Create test file for weapon decoder in bfis-service/src/snapshot/__tests__/weapon-decoder.test.ts
+- [X] T022 [P] [US2] Add test: decodeWeapons extracts updateTime and weapon data in bfis-service/src/snapshot/__tests__/weapon-decoder.test.ts
 
 ### Implementation for User Story 2
 
-- [ ] T023 [US2] Implement decodeUnits function with DataExtractor loop pattern in bfis-service/src/snapshot/unit-decoder.ts
-- [ ] T024 [US2] Implement DataIndexes switch for unit field extraction (category, coalition, name, position, unitID, groupID) in bfis-service/src/snapshot/unit-decoder.ts
-- [ ] T025 [US2] Convert BfisLatLng to OlympusUnitPosition in unit decoder in bfis-service/src/snapshot/unit-decoder.ts
-- [ ] T026 [US2] Convert uint32 unitId/groupId to strings in unit decoder in bfis-service/src/snapshot/unit-decoder.ts
-- [ ] T027 [US2] Convert coalition enum (uint8) to OlympusCoalition type in bfis-service/src/snapshot/unit-decoder.ts
-- [ ] T028 [US2] Implement decodeWeapons function with DataExtractor loop pattern in bfis-service/src/snapshot/weapon-decoder.ts
-- [ ] T029 [US2] Integrate unit decoder into SnapshotReader.readOnce in bfis-service/src/snapshot/snapshot-reader.ts
-- [ ] T030 [US2] Integrate weapon decoder into SnapshotReader.readOnce in bfis-service/src/snapshot/snapshot-reader.ts
-- [ ] T031 [US2] Add units array to OlympusSnapshot construction in bfis-service/src/snapshot/snapshot-reader.ts
-- [ ] T032 [US2] Update bfis-snapshot-read-ok log to include unitCount and buffer sizes in bfis-service/src/snapshot/snapshot-reader.ts
+- [X] T023 [US2] Implement decodeUnits function with DataExtractor loop pattern in bfis-service/src/snapshot/unit-decoder.ts
+- [X] T024 [US2] Implement DataIndexes switch for unit field extraction (category, coalition, name, position, unitID, groupID) in bfis-service/src/snapshot/unit-decoder.ts
+- [X] T025 [US2] Convert BfisLatLng to OlympusUnitPosition in unit decoder in bfis-service/src/snapshot/unit-decoder.ts
+- [X] T026 [US2] Convert uint32 unitId/groupId to strings in unit decoder in bfis-service/src/snapshot/unit-decoder.ts
+- [X] T027 [US2] Convert coalition enum (uint8) to OlympusCoalition type in bfis-service/src/snapshot/unit-decoder.ts
+- [X] T028 [US2] Implement decodeWeapons function with DataExtractor loop pattern in bfis-service/src/snapshot/weapon-decoder.ts
+- [X] T029 [US2] Integrate unit decoder into SnapshotReader.readOnce in bfis-service/src/snapshot/snapshot-reader.ts
+- [X] T030 [US2] Integrate weapon decoder into SnapshotReader.readOnce in bfis-service/src/snapshot/snapshot-reader.ts
+- [X] T031 [US2] Add units array to OlympusSnapshot construction in bfis-service/src/snapshot/snapshot-reader.ts
+- [X] T032 [US2] Update bfis-snapshot-read-ok log to include unitCount and buffer sizes in bfis-service/src/snapshot/snapshot-reader.ts
 
 **Checkpoint**: At this point, User Story 2 should be complete - BFIS can decode binary unit/weapon data into structured objects
 

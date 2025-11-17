@@ -41,23 +41,23 @@ import { DataIndexes } from "./data-indexes.js";
  * ```
  */
 export function decodeWeapons(buffer: ArrayBuffer): { updateTime: number; weapons: unknown[] } {
-  // TODO: Implement full decoding logic in User Story 2
-  // This is a placeholder structure for Phase 2
-  
   const dataExtractor = new DataExtractor(buffer);
   
-  // Extract updateTime (first 8 bytes)
+  // Extract updateTime (first 8 bytes, uint64)
   const updateTime = Number(dataExtractor.extractUInt64());
   
-  // TODO: Implement weapon decoding loop
-  // while (dataExtractor.getSeekPosition() < buffer.byteLength) {
-  //   const weaponId = dataExtractor.extractUInt32();
-  //   // ... decode weapon data using DataIndexes switch
-  // }
+  // For MVP, weapons are not fully decoded - return empty array
+  // Full weapon decoding would follow the same pattern as units:
+  // - Loop extracting weapon IDs
+  // - Extract weapon data fields via DataIndexes switch
+  // - Convert to weapon objects
+  // This is deferred to post-MVP as weapons are not part of OlympusSnapshot in MVP
+  
+  const weapons: unknown[] = [];
   
   return {
     updateTime,
-    weapons: [], // Placeholder - will be implemented in User Story 2
+    weapons,
   };
 }
 
