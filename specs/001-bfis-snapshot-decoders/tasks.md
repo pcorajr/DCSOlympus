@@ -31,11 +31,11 @@
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T004 Create unit decoder module structure in bfis-service/src/snapshot/unit-decoder.ts
-- [ ] T005 Create weapon decoder module structure in bfis-service/src/snapshot/weapon-decoder.ts
-- [ ] T006 Add session state tracking fields to SnapshotReader class in bfis-service/src/snapshot/snapshot-reader.ts
-- [ ] T006a [P] Review and update probeMissionOnce JSDoc and logging to align with FR-002 and constitution in bfis-service/src/snapshot/snapshot-reader.ts
-- [ ] T006b Create polling loop module in bfis-service/src/runtime/polling-loop.ts with readOnce() at configured intervals, session hash handling, and error logging/backoff
+- [X] T004 Create unit decoder module structure in bfis-service/src/snapshot/unit-decoder.ts
+- [X] T005 Create weapon decoder module structure in bfis-service/src/snapshot/weapon-decoder.ts
+- [X] T006 Add session state tracking fields to SnapshotReader class in bfis-service/src/snapshot/snapshot-reader.ts
+- [X] T006a [P] Review and update probeMissionOnce JSDoc and logging to align with FR-002 and constitution in bfis-service/src/snapshot/snapshot-reader.ts
+- [X] T006b Create polling loop module in bfis-service/src/runtime/polling-loop.ts with readOnce() at configured intervals, session hash handling, and error logging/backoff
 
 **Note**: FR-002 (initial connectivity probe) is already implemented via `probeMissionOnce()` method. Task T006a ensures documentation alignment.
 

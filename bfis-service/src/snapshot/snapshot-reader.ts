@@ -54,10 +54,38 @@ function roleToCommandMode(role: string): string {
  * This class encapsulates all logic for communicating with Olympus endpoints,
  * decoding responses, and constructing the internal snapshot representation
  * that the rest of BFIS uses for decision-making.
+ * 
+ * Session state tracking:
+ * - `lastSessionHash`: Tracks the last known session hash to detect mission resets
+ * - `lastTimes`: Tracks last update time per endpoint for incremental polling
  */
 export class SnapshotReader {
   private readonly config: BfisConfig;
   private readonly logger?: StructuredLogger;
+  
+  /**
+   * Last known session hash from Olympus responses.
+   * 
+   * Used to detect mission resets. When session hash changes, BFIS must
+   * reset its state and perform full data refresh (time=0) for all endpoints.
+   * 
+   * @see FR-008, FR-008a, FR-009
+   */
+  private lastSessionHash: string | null = null;
+  
+  /**
+   * Last update time per endpoint for incremental polling.
+   * 
+   * Tracks the last known update time for units, weapons, and logs endpoints.
+   * Used to construct time query parameters (e.g., `?time={lastTime}`) for
+   * incremental updates, reducing data transfer when no changes occur.
+   * 
+   * Keys: "units", "weapons", "logs"
+   * Values: Milliseconds since epoch (from response time fields or binary updateTime)
+   * 
+   * @see FR-010, FR-011
+   */
+  private lastTimes: Record<string, number> = {};
 
   /**
    * Create a new SnapshotReader with the given configuration.
@@ -74,10 +102,18 @@ export class SnapshotReader {
    * Perform a single authenticated GET against /olympus/mission to verify
    * that BFIS can reach the Olympus frontend and has valid credentials.
    *
-   * This is a connectivity and authentication probe used during startup.
+   * This is a connectivity and authentication probe used during startup (FR-002).
    * It does not parse the response body - only verifies the request succeeds.
+   * 
+   * Per FR-002: System MUST perform an initial connectivity probe on startup
+   * to verify Olympus availability and credentials.
+   * 
+   * On success, logs `bfis-olympus-probe-ok` event with URL and status.
+   * On failure, throws Error with status and message for caller to handle.
    *
    * @throws Error if the request fails (network error, auth failure, etc.)
+   * 
+   * @see FR-002
    */
   async probeMissionOnce(): Promise<void> {
     const { olympusBaseUrl, olympusAuth } = this.config;
