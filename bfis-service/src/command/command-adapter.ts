@@ -26,5 +26,8 @@
  * - Track command hashes for correlation with decision logs
  * - Handle command failures and retries (if applicable)
  *
+ * Per constitution: All documentation in code. This placeholder will be expanded
+ * with full implementation when command mapping is developed.
+ *
  * TODO: Implement command mapping and async command flow tracking.
  */

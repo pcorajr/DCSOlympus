@@ -19,5 +19,8 @@
  * - Prepare prompts for LLM with conversation context
  * - Optionally propose actions before executing (for Copilot mode)
  *
+ * Per constitution: All documentation in code. This placeholder will be expanded
+ * with full implementation when Copilot mode is developed.
+ *
  * TODO: Implement dialogue management and context tracking.
  */

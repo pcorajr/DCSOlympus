@@ -22,6 +22,7 @@
 
 import { loadConfig } from "./config/config.js";
 import { SnapshotReader } from "./snapshot/snapshot-reader.js";
+import { createStructuredLogger } from "./logger/structured-logger.js";
 
 /**
  * Main application entry point.
@@ -37,49 +38,35 @@ import { SnapshotReader } from "./snapshot/snapshot-reader.js";
 async function main(): Promise<void> {
   const config = loadConfig();
 
-  // Human-friendly startup line for docker logs.
-  // Structured JSON logging enables log aggregation and filtering in containerized environments.
-  console.log(
-    JSON.stringify({
-      event: "bfis-startup",
-      ts: new Date().toISOString(),
-      bfisVersion: config.bfisVersion,
-      logLevel: config.logLevel,
-      olympusFrontendBaseUrl: config.olympusFrontendBaseUrl,
-      olympusBaseUrl: config.olympusBaseUrl,
-      olympusRole: config.olympusAuth.role,
-      olympusUsername: config.olympusAuth.username,
-    })
-  );
+  const logger = createStructuredLogger(config.generalLogPath, config.logLevel);
 
-  const snapshotReader = new SnapshotReader(config);
+  logger.info("bfis-startup", {
+    bfisVersion: config.bfisVersion,
+    logLevel: config.logLevel,
+    olympusFrontendBaseUrl: config.olympusFrontendBaseUrl,
+    olympusBaseUrl: config.olympusBaseUrl,
+    olympusRole: config.olympusAuth.role,
+    olympusUsername: config.olympusAuth.username,
+  });
+
+  const snapshotReader = new SnapshotReader(config, logger);
 
   // Connectivity probe: verify BFIS can reach Olympus and credentials are valid.
   // This fails fast if Olympus is unreachable or authentication is misconfigured.
   try {
     await snapshotReader.probeMissionOnce();
   } catch (err) {
-    // Log probe failure but don't crash - allows container to start for debugging
-    // In production, this might trigger health check failures or retry logic
-    console.error(
-      JSON.stringify({
-        event: "bfis-olympus-probe-error",
-        ts: new Date().toISOString(),
-        message: err instanceof Error ? err.message : String(err),
-      })
-    );
+    // Log probe failure but don't crash - allows container to start for debugging.
+    logger.error("bfis-olympus-probe-error", {
+      message: err instanceof Error ? err.message : String(err),
+    });
   }
 
   // Minimal heartbeat to keep the process/container alive for now.
   // In production, this will be replaced by the main decision loop that continuously
   // polls Olympus, makes decisions, and issues commands.
   setInterval(() => {
-    console.log(
-      JSON.stringify({
-        event: "bfis-heartbeat",
-        ts: new Date().toISOString(),
-      })
-    );
+    logger.info("bfis-heartbeat");
   }, 60_000);
 }
 

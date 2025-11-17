@@ -87,6 +87,8 @@ export interface LlmConfig {
 export interface BfisConfig {
   bfisVersion: string;
   logLevel: "debug" | "info" | "warn" | "error";
+  /** General structured log file for service events. */
+  generalLogPath: string;
   olympusFrontendBaseUrl: string;
   olympusBaseUrl: string;
   olympusAuth: OlympusAuthConfig;
@@ -104,6 +106,12 @@ export interface BfisConfig {
  * @param envPath - Path to the environment file
  */
 function loadEnvFileIfPresent(envPath: string): void {
+  /**
+   * Load simple KEY=VALUE pairs from a file into process.env if the file exists.
+   * Existing environment variables are not overridden.
+   *
+   * This is used to ingest `/home/dcs/.creds/olympus_env.txt` in the home setup.
+   */
   try {
     if (fs.existsSync(envPath)) {
       const contents = fs.readFileSync(envPath, "utf-8");
@@ -324,6 +332,7 @@ export function loadConfig(): BfisConfig {
   return {
     bfisVersion: process.env.BFIS_VERSION ?? detectBfisVersion(),
     logLevel: normalizeLogLevel(process.env.BFIS_LOG_LEVEL),
+    generalLogPath: process.env.BFIS_LOG_PATH ?? "logs/bfis-service.log",
     olympusFrontendBaseUrl: frontendBaseUrl,
     olympusBaseUrl,
     olympusAuth: resolveOlympusAuth(),

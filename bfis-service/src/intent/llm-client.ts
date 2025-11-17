@@ -17,5 +17,8 @@
  * - Handle provider-specific API differences (request/response formats)
  * - Support streaming responses (future enhancement)
  *
+ * Per constitution: All documentation in code. This placeholder will be expanded
+ * with full implementation when LLM integration is developed.
+ *
  * TODO: Implement Ollama and LLMstudio clients, with abstraction for future cloud providers.
  */

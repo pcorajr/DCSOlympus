@@ -23,6 +23,7 @@
  */
 
 import type { BfisConfig } from "../config/config.js";
+import type { StructuredLogger } from "../logger/structured-logger.js";
 
 /**
  * Convert Olympus role to command mode header value.
@@ -56,14 +57,17 @@ function roleToCommandMode(role: string): string {
  */
 export class SnapshotReader {
   private readonly config: BfisConfig;
+  private readonly logger?: StructuredLogger;
 
   /**
    * Create a new SnapshotReader with the given configuration.
    *
    * @param config - BFIS configuration containing Olympus URLs and auth
+   * @param logger - Optional structured logger for probe and snapshot events
    */
-  constructor(config: BfisConfig) {
+  constructor(config: BfisConfig, logger?: StructuredLogger) {
     this.config = config;
+    this.logger = logger;
   }
 
   /**
@@ -108,13 +112,8 @@ export class SnapshotReader {
     // We do not parse the body yet; this is purely a connectivity/auth probe.
     // Future implementation will parse the mission response to extract missionId,
     // serverId, and sessionHash for snapshot construction.
-    console.log(
-      JSON.stringify({
-        event: "bfis-olympus-probe-ok",
-        ts: new Date().toISOString(),
-        url,
-        status: res.status,
-      })
-    );
+    if (this.logger) {
+      this.logger.info("bfis-olympus-probe-ok", { url, status: res.status });
+    }
   }
 }

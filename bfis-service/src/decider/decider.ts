@@ -26,5 +26,8 @@
  * - LLM-powered: Use LLM to analyze snapshot and generate actions (future)
  * - Hybrid: Combine rules for safety/limits with LLM for complex decisions
  *
+ * Per constitution: All documentation in code. This placeholder will be expanded
+ * with full implementation when decision logic is developed.
+ *
  * TODO: Implement decision logic (rules-based for MVP, LLM-powered for future).
  */

@@ -49,6 +49,16 @@ You MUST NOT modify:
 - **Complexity must be justified** - if code is hard to understand, add comments or refactor.
 - **AI-generated code must include JSDoc** explaining rationale and connection to specifications.
 
+### 5.1 Logging & Instrumentation (NON-NEGOTIABLE)
+- **Everything must be logged and structured**:
+  - Service events, probes, errors, and decision cycles MUST emit structured JSON records.
+  - Logs MUST be written to files under the BFIS logs folder (for example `bfis-service/logs/` via configured paths) in addition to stdout/stderr when running in Docker.
+- **Use shared logging utilities**:
+  - General service logs MUST go through the structured logger (for example `createStructuredLogger`) instead of ad-hoc `console.log` for anything beyond temporary debugging.
+  - Decision logs MUST use the NDJSON logger and conform to the BFIS decision log schema.
+- **No one-off logging**:
+  - Avoid bespoke log formats or ad-hoc strings; all logs should be machine-parsable and consistent with existing patterns.
+
 ### 6. Specification-Driven Development
 - **Specs first, code second** - significant changes must be described in `docs/integration/bfis/` or the constitution before implementation.
 - **Code that diverges from written spec is out of order** and must be reconciled.
@@ -60,6 +70,13 @@ You MUST NOT modify:
 - **Integration tests for contract compliance** - BFIS ⇄ Olympus shared schemas, command mapping.
 - **No coverage requirements**, but tests must be meaningful and maintainable.
 - **Test file location (ABSOLUTELY PROHIBITED):** Tests MUST be saved to the correct test folder for the component you are working on. It is **ABSOLUTELY PROHIBITED** to save tests to the repository root. Tests must be co-located with the code they test (e.g., `bfis-service/src/snapshot/__tests__/` for snapshot tests).
+
+### 7.1 Testing Pattern (Wireframe Style)
+- **Wireframe test suites, not one-off tests**:
+  - When adding tests, follow a consistent directory and naming pattern (for example `__tests__/snapshot-reader.test.ts` mirroring `snapshot-reader.ts`).
+  - Avoid single, ad-hoc test scripts; build test scaffolding that can be expanded as BFIS grows.
+- **Instrumented tests**:
+  - Tests SHOULD assert on structured logs or key events where it makes sense, to ensure instrumentation stays intact and meaningful.
 
 ## Common Workflows
 
@@ -101,4 +118,3 @@ If you encounter:
 > "Let Olympus handle that; BFIS only needs the results."
 
 When in doubt, refer to the constitution. When the constitution is unclear, stop and ask the human.
-
