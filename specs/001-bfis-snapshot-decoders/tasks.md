@@ -137,25 +137,25 @@
 
 ### Tests for User Story 4
 
-- [ ] T043 [P] [US4] Add test: readOnce fetches all endpoints in specified order in bfis-service/src/snapshot/__tests__/snapshot-reader.test.ts
-- [ ] T044 [P] [US4] Add test: time query parameter used for units/weapons/logs endpoints in bfis-service/src/snapshot/__tests__/snapshot-reader.test.ts
-- [ ] T045 [P] [US4] Add test: lastTimes updated from response time fields in bfis-service/src/snapshot/__tests__/snapshot-reader.test.ts
-- [ ] T046 [P] [US4] Add test: full refresh (time=0) on initial poll in bfis-service/src/snapshot/__tests__/snapshot-reader.test.ts
+- [X] T043 [P] [US4] Add test: readOnce fetches all endpoints in specified order in bfis-service/src/snapshot/__tests__/snapshot-reader.test.ts
+- [X] T044 [P] [US4] Add test: time query parameter used for units/weapons/logs endpoints in bfis-service/src/snapshot/__tests__/snapshot-reader.test.ts
+- [X] T045 [P] [US4] Add test: lastTimes updated from response time fields in bfis-service/src/snapshot/__tests__/snapshot-reader.test.ts
+- [X] T046 [P] [US4] Add test: full refresh (time=0) on initial poll in bfis-service/src/snapshot/__tests__/snapshot-reader.test.ts
 
 ### Implementation for User Story 4
 
-- [ ] T047 [US4] Implement fetchUnits helper method with time query parameter in bfis-service/src/snapshot/snapshot-reader.ts
-- [ ] T048 [US4] Implement fetchWeapons helper method with time query parameter in bfis-service/src/snapshot/snapshot-reader.ts
-- [ ] T049 [US4] Implement fetchLogs helper method with time query parameter in bfis-service/src/snapshot/snapshot-reader.ts
-- [ ] T050 [US4] Implement fetchAirbases helper method in bfis-service/src/snapshot/snapshot-reader.ts
-- [ ] T051 [US4] Implement fetchBullseyes helper method in bfis-service/src/snapshot/snapshot-reader.ts
-- [ ] T052 [US4] Implement fetchSpots helper method in bfis-service/src/snapshot/snapshot-reader.ts
-- [ ] T053 [US4] Implement fetchDrawings helper method in bfis-service/src/snapshot/snapshot-reader.ts
-- [ ] T054 [US4] Update readOnce to fetch all endpoints in specified order (FR-016) in bfis-service/src/snapshot/snapshot-reader.ts
-- [ ] T054a [US4] Integrate polling loop into main entry point (replace heartbeat with loop.start()) in bfis-service/src/index.ts
-- [ ] T055 [US4] Extract updateTime from binary buffers (first 8 bytes uint64) in bfis-service/src/snapshot/snapshot-reader.ts
-- [ ] T056 [US4] Update lastTimes from response time fields and binary updateTime in bfis-service/src/snapshot/snapshot-reader.ts
-- [ ] T057 [US4] Use time=0 for full refresh on initial poll or session reset in bfis-service/src/snapshot/snapshot-reader.ts
+- [X] T047 [US4] Implement fetchUnits helper method with time query parameter in bfis-service/src/snapshot/snapshot-reader.ts
+- [X] T048 [US4] Implement fetchWeapons helper method with time query parameter in bfis-service/src/snapshot/snapshot-reader.ts
+- [X] T049 [US4] Implement fetchLogs helper method with time query parameter in bfis-service/src/snapshot/snapshot-reader.ts
+- [X] T050 [US4] Implement fetchAirbases helper method in bfis-service/src/snapshot/snapshot-reader.ts
+- [X] T051 [US4] Implement fetchBullseyes helper method in bfis-service/src/snapshot/snapshot-reader.ts
+- [X] T052 [US4] Implement fetchSpots helper method in bfis-service/src/snapshot/snapshot-reader.ts
+- [X] T053 [US4] Implement fetchDrawings helper method in bfis-service/src/snapshot/snapshot-reader.ts
+- [X] T054 [US4] Update readOnce to fetch all endpoints in specified order (FR-016) in bfis-service/src/snapshot/snapshot-reader.ts
+- [X] T054a [US4] Integrate polling loop into main entry point (replace heartbeat with loop.start()) in bfis-service/src/index.ts
+- [X] T055 [US4] Extract updateTime from binary buffers (first 8 bytes uint64) in bfis-service/src/snapshot/snapshot-reader.ts
+- [X] T056 [US4] Update lastTimes from response time fields and binary updateTime in bfis-service/src/snapshot/snapshot-reader.ts
+- [X] T057 [US4] Use time=0 for full refresh on initial poll or session reset in bfis-service/src/snapshot/snapshot-reader.ts
 
 **Checkpoint**: At this point, User Story 4 should be complete - BFIS polls all endpoints with incremental updates
 

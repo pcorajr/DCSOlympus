@@ -23,6 +23,7 @@
 import { loadConfig } from "./config/config.js";
 import { SnapshotReader } from "./snapshot/snapshot-reader.js";
 import { createStructuredLogger } from "./logger/structured-logger.js";
+import { PollingLoop } from "./runtime/polling-loop.js";
 
 /**
  * Main application entry point.
@@ -62,12 +63,15 @@ async function main(): Promise<void> {
     });
   }
 
-  // Minimal heartbeat to keep the process/container alive for now.
-  // In production, this will be replaced by the main decision loop that continuously
-  // polls Olympus, makes decisions, and issues commands.
-  setInterval(() => {
-    logger.info("bfis-heartbeat");
-  }, 60_000);
+  // Per T054a: Start polling loop to continuously poll Olympus endpoints
+  // The polling loop calls snapshotReader.readOnce() at configured intervals,
+  // handles session hash changes, and logs errors for retry on next tick.
+  // Future: After successful snapshot, invoke decider/command adapter (post-MVP).
+  const pollingLoop = new PollingLoop(config, logger, snapshotReader);
+  pollingLoop.start();
+
+  // Keep process alive - polling loop runs in background
+  // Process will exit if polling loop stops (unhandled error) or container is stopped
 }
 
 // Execute main and handle any uncaught promise rejections

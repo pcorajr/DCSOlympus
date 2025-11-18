@@ -22,6 +22,8 @@
  * - Mission/airbases/bullseyes/spots: every 5000-10000ms
  */
 import { v4 as randomUUID } from "uuid";
+import { decodeUnits } from "./unit-decoder.js";
+import { decodeWeapons } from "./weapon-decoder.js";
 /**
  * Convert Olympus role to command mode header value.
  *
@@ -80,6 +82,19 @@ export class SnapshotReader {
      * @see FR-010, FR-011
      */
     lastTimes = {};
+    /**
+     * Unit state cache - accumulates full unit data across multiple polls.
+     *
+     * Key: unitId (string)
+     * Value: Complete OlympusUnit with all fields populated
+     *
+     * This matches the frontend UnitsManager pattern: maintain state between polls
+     * and merge incremental updates. Delta encoding means we only get changed fields,
+     * so we need to accumulate data over multiple cycles to get complete unit info.
+     *
+     * Cache is cleared on session hash changes (mission reset).
+     */
+    unitCache = new Map();
     /**
      * Create a new SnapshotReader with the given configuration.
      *
@@ -140,6 +155,45 @@ export class SnapshotReader {
         }
     }
     /**
+     * Check if session hash has changed and handle reset if needed.
+     *
+     * Per FR-008: Detects session hash changes to identify mission resets.
+     * Per FR-008a: Throws error if session hash changes mid-poll cycle to trigger abort and retry.
+     * Per FR-009: Resets internal state (lastTimes, unitCache) when session hash changes.
+     *
+     * @param newSessionHash - The session hash from the current response
+     * @param abortOnChange - If true, throws error on change to abort current poll cycle (FR-008a)
+     * @returns true if session hash changed, false otherwise
+     * @throws Error if session hash changed and abortOnChange is true
+     *
+     * @private
+     */
+    checkSessionHash(newSessionHash, abortOnChange = false) {
+        const sessionChanged = this.lastSessionHash !== null && this.lastSessionHash !== newSessionHash;
+        if (sessionChanged) {
+            const oldSessionHash = this.lastSessionHash;
+            // Per FR-009: Reset internal state on session hash change
+            this.unitCache.clear();
+            this.lastTimes = {}; // Clear lastTimes for full refresh on next poll
+            // Per T041: Update lastSessionHash to new value so next poll treats it as new session
+            // This must happen before throwing to ensure retry doesn't see it as a change again
+            this.lastSessionHash = newSessionHash;
+            // Per FR-012: Log session reset event
+            if (this.logger) {
+                this.logger.info("bfis-session-reset", {
+                    oldSessionHash,
+                    newSessionHash,
+                    clearedUnitCount: this.unitCache.size,
+                });
+            }
+            // Per FR-008a: Abort current poll cycle if change detected mid-poll
+            if (abortOnChange) {
+                throw new Error(`Session hash changed mid-poll cycle: ${oldSessionHash} -> ${newSessionHash}. Aborting current poll to retry with fresh state.`);
+            }
+        }
+        return sessionChanged;
+    }
+    /**
      * Fetch mission data from Olympus `/olympus/mission` endpoint.
      *
      * Performs authenticated GET request and parses JSON response to extract
@@ -191,47 +245,414 @@ export class SnapshotReader {
         };
     }
     /**
+     * Fetch binary units data from Olympus `/olympus/units` endpoint.
+     *
+     * Per FR-010: Uses time query parameter for incremental updates.
+     * Returns the raw ArrayBuffer for decoding.
+     *
+     * @param lastTime - Optional last update time for incremental fetch (0 for full refresh)
+     * @returns ArrayBuffer containing binary units data
+     * @throws Error if fetch fails
+     *
+     * @see FR-010, FR-011
+     */
+    async fetchUnits(lastTime = 0) {
+        const { olympusBaseUrl, olympusAuth } = this.config;
+        const base = olympusBaseUrl.replace(/\/+$/, "");
+        const url = lastTime > 0 ? `${base}/units?time=${lastTime}` : `${base}/units`;
+        const username = olympusAuth.username;
+        const password = olympusAuth.password;
+        const commandMode = roleToCommandMode(olympusAuth.role);
+        const basic = Buffer.from(`${username}:${password}`).toString("base64");
+        const res = await fetch(url, {
+            method: "GET",
+            headers: {
+                Authorization: `Basic ${basic}`,
+                "X-Command-Mode": commandMode,
+                Accept: "application/octet-stream",
+            },
+        });
+        if (!res.ok) {
+            const text = await res.text().catch(() => "");
+            throw new Error(`Failed to fetch units: ${res.status} ${res.statusText} ${text}`);
+        }
+        return await res.arrayBuffer();
+    }
+    /**
+     * Fetch binary weapons data from Olympus `/olympus/weapons` endpoint.
+     *
+     * Per FR-010: Uses time query parameter for incremental updates.
+     * Returns the raw ArrayBuffer for decoding.
+     *
+     * @param lastTime - Optional last update time for incremental fetch (0 for full refresh)
+     * @returns ArrayBuffer containing binary weapons data
+     * @throws Error if fetch fails
+     *
+     * @see FR-010, FR-011
+     */
+    async fetchWeapons(lastTime = 0) {
+        const { olympusBaseUrl, olympusAuth } = this.config;
+        const base = olympusBaseUrl.replace(/\/+$/, "");
+        const url = lastTime > 0 ? `${base}/weapons?time=${lastTime}` : `${base}/weapons`;
+        const username = olympusAuth.username;
+        const password = olympusAuth.password;
+        const commandMode = roleToCommandMode(olympusAuth.role);
+        const basic = Buffer.from(`${username}:${password}`).toString("base64");
+        const res = await fetch(url, {
+            method: "GET",
+            headers: {
+                Authorization: `Basic ${basic}`,
+                "X-Command-Mode": commandMode,
+                Accept: "application/octet-stream",
+            },
+        });
+        if (!res.ok) {
+            const text = await res.text().catch(() => "");
+            throw new Error(`Failed to fetch weapons: ${res.status} ${res.statusText} ${text}`);
+        }
+        return await res.arrayBuffer();
+    }
+    /**
+     * Fetch logs data from Olympus `/olympus/logs` endpoint.
+     *
+     * Per FR-010: Uses time query parameter for incremental updates.
+     * Returns parsed JSON response with logs and metadata.
+     *
+     * @param lastTime - Optional last update time for incremental fetch (0 for full refresh)
+     * @returns Parsed JSON response with logs array and metadata (time, sessionHash, etc.)
+     * @throws Error if fetch fails or response cannot be parsed
+     *
+     * @see FR-010, FR-011
+     */
+    async fetchLogs(lastTime = 0) {
+        const { olympusBaseUrl, olympusAuth } = this.config;
+        const base = olympusBaseUrl.replace(/\/+$/, "");
+        const url = lastTime > 0 ? `${base}/logs?time=${lastTime}` : `${base}/logs`;
+        const username = olympusAuth.username;
+        const password = olympusAuth.password;
+        const commandMode = roleToCommandMode(olympusAuth.role);
+        const basic = Buffer.from(`${username}:${password}`).toString("base64");
+        const res = await fetch(url, {
+            method: "GET",
+            headers: {
+                Authorization: `Basic ${basic}`,
+                "X-Command-Mode": commandMode,
+                Accept: "application/json",
+            },
+        });
+        if (!res.ok) {
+            const text = await res.text().catch(() => "");
+            throw new Error(`Failed to fetch logs: ${res.status} ${res.statusText} ${text}`);
+        }
+        const data = (await res.json());
+        // Extract time and sessionHash from response
+        const timeValue = data.time ?? Date.now();
+        const time = typeof timeValue === "string" ? new Date(Number(timeValue)).toISOString() : new Date(timeValue).toISOString();
+        const sessionHash = data.sessionHash ?? "";
+        // Exclude time and sessionHash from spread to use our converted values
+        const { time: _, sessionHash: __, ...rest } = data;
+        return {
+            logs: data.logs ?? [],
+            time,
+            sessionHash,
+            ...rest,
+        };
+    }
+    /**
+     * Fetch airbases data from Olympus `/olympus/airbases` endpoint.
+     *
+     * Returns parsed JSON response with airbase information and metadata.
+     *
+     * @returns Parsed JSON response with airbases and metadata (time, sessionHash, etc.)
+     * @throws Error if fetch fails or response cannot be parsed
+     */
+    async fetchAirbases() {
+        const { olympusBaseUrl, olympusAuth } = this.config;
+        const base = olympusBaseUrl.replace(/\/+$/, "");
+        const url = `${base}/airbases`;
+        const username = olympusAuth.username;
+        const password = olympusAuth.password;
+        const commandMode = roleToCommandMode(olympusAuth.role);
+        const basic = Buffer.from(`${username}:${password}`).toString("base64");
+        const res = await fetch(url, {
+            method: "GET",
+            headers: {
+                Authorization: `Basic ${basic}`,
+                "X-Command-Mode": commandMode,
+                Accept: "application/json",
+            },
+        });
+        if (!res.ok) {
+            const text = await res.text().catch(() => "");
+            throw new Error(`Failed to fetch airbases: ${res.status} ${res.statusText} ${text}`);
+        }
+        const data = (await res.json());
+        const timeValue = data.time ?? Date.now();
+        const time = typeof timeValue === "string" ? new Date(Number(timeValue)).toISOString() : new Date(timeValue).toISOString();
+        const sessionHash = data.sessionHash ?? "";
+        // Exclude time and sessionHash from spread to use our converted values
+        const { time: _, sessionHash: __, ...rest } = data;
+        return {
+            airbases: data.airbases,
+            time,
+            sessionHash,
+            ...rest,
+        };
+    }
+    /**
+     * Fetch bullseyes data from Olympus `/olympus/bullseyes` endpoint.
+     *
+     * Returns parsed JSON response with bullseye coordinates per coalition and metadata.
+     *
+     * @returns Parsed JSON response with bullseyes and metadata (time, sessionHash, etc.)
+     * @throws Error if fetch fails or response cannot be parsed
+     */
+    async fetchBullseyes() {
+        const { olympusBaseUrl, olympusAuth } = this.config;
+        const base = olympusBaseUrl.replace(/\/+$/, "");
+        const url = `${base}/bullseyes`;
+        const username = olympusAuth.username;
+        const password = olympusAuth.password;
+        const commandMode = roleToCommandMode(olympusAuth.role);
+        const basic = Buffer.from(`${username}:${password}`).toString("base64");
+        const res = await fetch(url, {
+            method: "GET",
+            headers: {
+                Authorization: `Basic ${basic}`,
+                "X-Command-Mode": commandMode,
+                Accept: "application/json",
+            },
+        });
+        if (!res.ok) {
+            const text = await res.text().catch(() => "");
+            throw new Error(`Failed to fetch bullseyes: ${res.status} ${res.statusText} ${text}`);
+        }
+        const data = (await res.json());
+        const timeValue = data.time ?? Date.now();
+        const time = typeof timeValue === "string" ? new Date(Number(timeValue)).toISOString() : new Date(timeValue).toISOString();
+        const sessionHash = data.sessionHash ?? "";
+        // Exclude time and sessionHash from spread to use our converted values
+        const { time: _, sessionHash: __, ...rest } = data;
+        return {
+            bullseyes: data.bullseyes,
+            time,
+            sessionHash,
+            ...rest,
+        };
+    }
+    /**
+     * Fetch spots data from Olympus `/olympus/spots` endpoint.
+     *
+     * Returns parsed JSON response with current laser/IR spots and metadata.
+     *
+     * @returns Parsed JSON response with spots and metadata (time, sessionHash, etc.)
+     * @throws Error if fetch fails or response cannot be parsed
+     */
+    async fetchSpots() {
+        const { olympusBaseUrl, olympusAuth } = this.config;
+        const base = olympusBaseUrl.replace(/\/+$/, "");
+        const url = `${base}/spots`;
+        const username = olympusAuth.username;
+        const password = olympusAuth.password;
+        const commandMode = roleToCommandMode(olympusAuth.role);
+        const basic = Buffer.from(`${username}:${password}`).toString("base64");
+        const res = await fetch(url, {
+            method: "GET",
+            headers: {
+                Authorization: `Basic ${basic}`,
+                "X-Command-Mode": commandMode,
+                Accept: "application/json",
+            },
+        });
+        if (!res.ok) {
+            const text = await res.text().catch(() => "");
+            throw new Error(`Failed to fetch spots: ${res.status} ${res.statusText} ${text}`);
+        }
+        const data = (await res.json());
+        const timeValue = data.time ?? Date.now();
+        const time = typeof timeValue === "string" ? new Date(Number(timeValue)).toISOString() : new Date(timeValue).toISOString();
+        const sessionHash = data.sessionHash ?? "";
+        // Exclude time and sessionHash from spread to use our converted values
+        const { time: _, sessionHash: __, ...rest } = data;
+        return {
+            spots: data.spots,
+            time,
+            sessionHash,
+            ...rest,
+        };
+    }
+    /**
+     * Fetch drawings data from Olympus `/olympus/drawings` endpoint.
+     *
+     * Returns parsed JSON response with drawing data organized by layers and metadata.
+     *
+     * @returns Parsed JSON response with drawings and metadata (time, sessionHash, etc.)
+     * @throws Error if fetch fails or response cannot be parsed
+     */
+    async fetchDrawings() {
+        const { olympusBaseUrl, olympusAuth } = this.config;
+        const base = olympusBaseUrl.replace(/\/+$/, "");
+        const url = `${base}/drawings`;
+        const username = olympusAuth.username;
+        const password = olympusAuth.password;
+        const commandMode = roleToCommandMode(olympusAuth.role);
+        const basic = Buffer.from(`${username}:${password}`).toString("base64");
+        const res = await fetch(url, {
+            method: "GET",
+            headers: {
+                Authorization: `Basic ${basic}`,
+                "X-Command-Mode": commandMode,
+                Accept: "application/json",
+            },
+        });
+        if (!res.ok) {
+            const text = await res.text().catch(() => "");
+            throw new Error(`Failed to fetch drawings: ${res.status} ${res.statusText} ${text}`);
+        }
+        const data = (await res.json());
+        const timeValue = data.time ?? Date.now();
+        const time = typeof timeValue === "string" ? new Date(Number(timeValue)).toISOString() : new Date(timeValue).toISOString();
+        const sessionHash = data.sessionHash ?? "";
+        // Exclude time and sessionHash from spread to use our converted values
+        const { time: _, sessionHash: __, ...rest } = data;
+        return {
+            drawings: data.drawings,
+            time,
+            sessionHash,
+            ...rest,
+        };
+    }
+    /**
      * Read a complete snapshot from Olympus endpoints.
      *
-     * Fetches mission data and constructs a normalized OlympusSnapshot object.
-     * For User Story 1, only fetches mission endpoint (units/weapons will be added in User Story 2).
+     * Per FR-016: Fetches endpoints in specified order: mission, units (binary), weapons (binary),
+     * logs, then airbases/bullseyes/spots/drawings.
      *
      * Per FR-007: Constructs snapshot with snapshotId, missionId, serverId, sessionHash,
-     * timestamp, and decoded units array (empty for User Story 1).
+     * timestamp, and decoded units array.
      *
      * Per FR-015: Generates unique snapshot ID using UUID v4 format.
      *
      * Per FR-012: Logs `bfis-snapshot-read-ok` event with snapshot metadata.
      *
-     * @returns Complete OlympusSnapshot with mission data and empty units array
+     * Per FR-010: Uses time query parameters for incremental updates (full refresh on first poll).
+     *
+     * Per FR-011: Updates lastTimes from response time fields and binary buffer updateTime values.
+     *
+     * @returns Complete OlympusSnapshot with mission data and decoded units
      * @throws Error if any endpoint fetch fails or snapshot construction fails
      *
-     * @see FR-007, FR-012, FR-015
+     * @see FR-007, FR-010, FR-011, FR-012, FR-015, FR-016
      */
     async readOnce() {
-        // Fetch mission endpoint (User Story 1: only mission, units/weapons in User Story 2)
+        // Per FR-016: Fetch endpoints in specified order: mission, units, weapons, logs, airbases, bullseyes, spots, drawings
+        // 1. Fetch mission endpoint
         const missionData = await this.fetchMission();
-        // Generate UUID v4 snapshotId (FR-015)
+        // Per FR-008: Check session hash after mission fetch
+        // Per FR-008a: If session hash changes between endpoints (mid-poll), we would abort,
+        // but since we only check after mission fetch, we handle session changes gracefully:
+        // reset state, log event, and continue with full refresh
+        const isFirstPoll = this.lastSessionHash === null;
+        const sessionChangedBeforeCheck = !isFirstPoll && this.lastSessionHash !== missionData.sessionHash;
+        // Check if session changed - this will reset state and log event (but not throw for between-polls changes)
+        // FR-008a mid-poll abort would require checking after each endpoint, which is not implemented in MVP
+        if (!isFirstPoll) {
+            this.checkSessionHash(missionData.sessionHash, false);
+        }
+        // Per FR-017: Use time=0 for full refresh on session reset or initial poll
+        // If first poll, session was reset (detected before checkSessionHash updated lastSessionHash),
+        // or lastTimes is empty (indicating recent reset), use full refresh
+        const isSessionReset = isFirstPoll || sessionChangedBeforeCheck || Object.keys(this.lastTimes).length === 0;
+        const unitsLastTime = (isSessionReset ? 0 : this.lastTimes["units"]) || 0;
+        const weaponsLastTime = (isSessionReset ? 0 : this.lastTimes["weapons"]) || 0;
+        const logsLastTime = (isSessionReset ? 0 : this.lastTimes["logs"]) || 0;
+        // 2. Fetch units (binary)
+        const unitsBuffer = await this.fetchUnits(unitsLastTime);
+        // 3. Fetch weapons (binary)
+        const weaponsBuffer = await this.fetchWeapons(weaponsLastTime);
+        // Decode binary data
+        const { updateTime: unitsUpdateTime, units } = decodeUnits(unitsBuffer, this.logger);
+        const { updateTime: weaponsUpdateTime } = decodeWeapons(weaponsBuffer);
+        // Per FR-011: Update lastTimes from decoded updateTime values (binary buffers)
+        this.lastTimes["units"] = unitsUpdateTime;
+        this.lastTimes["weapons"] = weaponsUpdateTime;
+        // 4. Fetch logs (JSON with time parameter)
+        const logsData = await this.fetchLogs(logsLastTime);
+        // Per FR-011: Update lastTimes from response time field (convert ISO string to number)
+        const logsTimeNum = new Date(logsData.time).getTime();
+        this.lastTimes["logs"] = logsTimeNum;
+        // 5. Fetch airbases (JSON, no time parameter)
+        const airbasesData = await this.fetchAirbases();
+        // Per FR-011: Update lastTimes from response time field
+        const airbasesTimeNum = new Date(airbasesData.time).getTime();
+        this.lastTimes["airbases"] = airbasesTimeNum;
+        // 6. Fetch bullseyes (JSON, no time parameter)
+        const bullseyesData = await this.fetchBullseyes();
+        // Per FR-011: Update lastTimes from response time field
+        const bullseyesTimeNum = new Date(bullseyesData.time).getTime();
+        this.lastTimes["bullseyes"] = bullseyesTimeNum;
+        // 7. Fetch spots (JSON, no time parameter)
+        const spotsData = await this.fetchSpots();
+        // Per FR-011: Update lastTimes from response time field
+        const spotsTimeNum = new Date(spotsData.time).getTime();
+        this.lastTimes["spots"] = spotsTimeNum;
+        // 8. Fetch drawings (JSON, no time parameter)
+        const drawingsData = await this.fetchDrawings();
+        // Per FR-011: Update lastTimes from response time field
+        const drawingsTimeNum = new Date(drawingsData.time).getTime();
+        this.lastTimes["drawings"] = drawingsTimeNum;
+        // Per FR-015, T042: Generate new snapshotId on session reset (independent of previous)
+        // If session reset occurred, generate new ID; otherwise use new UUID for each snapshot
         const snapshotId = randomUUID();
-        // Construct snapshot with mission data and empty units array (FR-007)
+        // Construct snapshot with mission data and decoded units (FR-007)
         const snapshot = {
             snapshotId,
             missionId: missionData.missionId,
             serverId: missionData.serverId,
             sessionHash: missionData.sessionHash,
             time: missionData.time,
-            units: [], // Empty for User Story 1, will be populated in User Story 2
+            units, // Decoded units from binary buffer
         };
-        // Update session state
+        // Per T041: Update lastSessionHash after successful poll
         this.lastSessionHash = missionData.sessionHash;
+        // Merge decoded units into cache (accumulate full data across polls)
+        // Delta encoding means we only get changed fields, so we merge updates into cached state
+        for (const unit of units) {
+            const existingUnit = this.unitCache.get(unit.unitId);
+            if (existingUnit) {
+                // Merge: update existing unit with new data (new fields override old)
+                this.unitCache.set(unit.unitId, {
+                    ...existingUnit,
+                    ...unit,
+                    // Preserve position if new one is default (0,0,0) and we have a real position
+                    position: unit.position.lat === 0 && unit.position.lon === 0 && unit.position.altMeters === 0
+                        ? existingUnit.position
+                        : unit.position,
+                });
+            }
+            else {
+                // New unit - add to cache
+                this.unitCache.set(unit.unitId, unit);
+            }
+        }
+        // Return snapshot with accumulated units from cache
+        const accumulatedUnits = Array.from(this.unitCache.values());
+        const snapshotWithCache = {
+            ...snapshot,
+            units: accumulatedUnits,
+        };
         // Log snapshot read success (FR-012)
         if (this.logger) {
             this.logger.info("bfis-snapshot-read-ok", {
                 snapshotId,
                 sessionHash: missionData.sessionHash,
-                unitCount: 0, // User Story 1: no units yet
+                unitCount: accumulatedUnits.length,
+                newUnitsInPoll: units.length,
+                cachedUnitsTotal: this.unitCache.size,
+                unitsBufferSize: unitsBuffer.byteLength,
+                weaponsBufferSize: weaponsBuffer.byteLength,
             });
         }
-        return snapshot;
+        return snapshotWithCache;
     }
 }

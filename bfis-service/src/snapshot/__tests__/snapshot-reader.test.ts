@@ -507,5 +507,302 @@ describe("SnapshotReader", () => {
       }
     });
   });
+
+  describe("User Story 4: Polling Multiple Data Sources", () => {
+    test("T043: readOnce fetches all endpoints in specified order (unit test)", { skip: RUN_INTEGRATION_TESTS }, async () => {
+      const config = createMockConfig();
+      const logger = createMockLogger();
+      const reader = new SnapshotReader(config, logger);
+
+      const fetchOrder: string[] = [];
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = async (url: string | URL | Request) => {
+        const urlStr = typeof url === "string" ? url : url instanceof URL ? url.toString() : url.url;
+        
+        // Track fetch order
+        if (urlStr.includes("/mission")) fetchOrder.push("mission");
+        else if (urlStr.includes("/units")) fetchOrder.push("units");
+        else if (urlStr.includes("/weapons")) fetchOrder.push("weapons");
+        else if (urlStr.includes("/logs")) fetchOrder.push("logs");
+        else if (urlStr.includes("/airbases")) fetchOrder.push("airbases");
+        else if (urlStr.includes("/bullseyes")) fetchOrder.push("bullseyes");
+        else if (urlStr.includes("/spots")) fetchOrder.push("spots");
+        else if (urlStr.includes("/drawings")) fetchOrder.push("drawings");
+
+        // Return appropriate responses
+        if (urlStr.includes("/mission")) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              mission: { theatre: "Caucasus" },
+              time: "1234567890",
+              sessionHash: "abc123",
+            }),
+          } as Response;
+        }
+        if (urlStr.includes("/units") || urlStr.includes("/weapons")) {
+          const buffer = new ArrayBuffer(9);
+          const view = new DataView(buffer);
+          view.setBigUint64(0, BigInt(1234567890), true);
+          view.setUint8(8, 0xFF);
+          return {
+            ok: true,
+            status: 200,
+            arrayBuffer: async () => buffer,
+          } as Response;
+        }
+        if (urlStr.includes("/logs") || urlStr.includes("/airbases") || urlStr.includes("/bullseyes") || 
+            urlStr.includes("/spots") || urlStr.includes("/drawings")) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              time: "1234567890",
+              sessionHash: "abc123",
+            }),
+          } as Response;
+        }
+        throw new Error(`Unexpected URL: ${urlStr}`);
+      };
+
+      try {
+        await reader.readOnce();
+
+        // Per FR-016: Verify endpoints fetched in specified order: mission, units, weapons, logs, airbases, bullseyes, spots, drawings
+        assert.deepStrictEqual(fetchOrder, [
+          "mission",
+          "units",
+          "weapons",
+          "logs",
+          "airbases",
+          "bullseyes",
+          "spots",
+          "drawings",
+        ], "Endpoints should be fetched in specified order");
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
+
+    test("T044: time query parameter used for units/weapons/logs endpoints (unit test)", { skip: RUN_INTEGRATION_TESTS }, async () => {
+      const config = createMockConfig();
+      const logger = createMockLogger();
+      const reader = new SnapshotReader(config, logger);
+
+      const fetchedUrls: string[] = [];
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = async (url: string | URL | Request) => {
+        const urlStr = typeof url === "string" ? url : url instanceof URL ? url.toString() : url.url;
+        fetchedUrls.push(urlStr);
+
+        if (urlStr.includes("/mission")) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              mission: { theatre: "Caucasus" },
+              time: "1234567890",
+              sessionHash: "abc123",
+            }),
+          } as Response;
+        }
+        if (urlStr.includes("/units") || urlStr.includes("/weapons")) {
+          const buffer = new ArrayBuffer(9);
+          const view = new DataView(buffer);
+          view.setBigUint64(0, BigInt(1234567890), true);
+          view.setUint8(8, 0xFF);
+          return {
+            ok: true,
+            status: 200,
+            arrayBuffer: async () => buffer,
+          } as Response;
+        }
+        if (urlStr.includes("/logs") || urlStr.includes("/airbases") || urlStr.includes("/bullseyes") || 
+            urlStr.includes("/spots") || urlStr.includes("/drawings")) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              time: "1234567890",
+              sessionHash: "abc123",
+            }),
+          } as Response;
+        }
+        throw new Error(`Unexpected URL: ${urlStr}`);
+      };
+
+      try {
+        // First poll: should use time=0 (full refresh)
+        await reader.readOnce();
+
+        const unitsUrl = fetchedUrls.find((url) => url.includes("/units"));
+        const weaponsUrl = fetchedUrls.find((url) => url.includes("/weapons"));
+        const logsUrl = fetchedUrls.find((url) => url.includes("/logs"));
+
+        // Per FR-010, T046: First poll should use time=0 (no time parameter = full refresh)
+        assert.ok(unitsUrl !== undefined, "Units endpoint should be fetched");
+        assert.ok(!unitsUrl.includes("time=") || unitsUrl.includes("time=0"), "Units should use time=0 on first poll");
+        
+        assert.ok(weaponsUrl !== undefined, "Weapons endpoint should be fetched");
+        assert.ok(!weaponsUrl.includes("time=") || weaponsUrl.includes("time=0"), "Weapons should use time=0 on first poll");
+        
+        assert.ok(logsUrl !== undefined, "Logs endpoint should be fetched");
+        assert.ok(!logsUrl.includes("time=") || logsUrl.includes("time=0"), "Logs should use time=0 on first poll");
+
+        // Second poll: should use incremental time parameter
+        fetchedUrls.length = 0; // Clear for second poll
+        await reader.readOnce();
+
+        const unitsUrl2 = fetchedUrls.find((url) => url.includes("/units"));
+        const weaponsUrl2 = fetchedUrls.find((url) => url.includes("/weapons"));
+        const logsUrl2 = fetchedUrls.find((url) => url.includes("/logs"));
+
+        // Per FR-010: Second poll should use time parameter with last update time
+        assert.ok(unitsUrl2?.includes("time="), "Units should use time parameter on second poll");
+        assert.ok(weaponsUrl2?.includes("time="), "Weapons should use time parameter on second poll");
+        assert.ok(logsUrl2?.includes("time="), "Logs should use time parameter on second poll");
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
+
+    test("T045: lastTimes updated from response time fields (unit test)", { skip: RUN_INTEGRATION_TESTS }, async () => {
+      const config = createMockConfig();
+      const logger = createMockLogger();
+      const reader = new SnapshotReader(config, logger);
+
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = async (url: string | URL | Request) => {
+        const urlStr = typeof url === "string" ? url : url instanceof URL ? url.toString() : url.url;
+
+        if (urlStr.includes("/mission")) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              mission: { theatre: "Caucasus" },
+              time: "1234567890",
+              sessionHash: "abc123",
+            }),
+          } as Response;
+        }
+        if (urlStr.includes("/units") || urlStr.includes("/weapons")) {
+          const buffer = new ArrayBuffer(9);
+          const view = new DataView(buffer);
+          view.setBigUint64(0, BigInt(1234567890), true);
+          view.setUint8(8, 0xFF);
+          return {
+            ok: true,
+            status: 200,
+            arrayBuffer: async () => buffer,
+          } as Response;
+        }
+        if (urlStr.includes("/logs") || urlStr.includes("/airbases") || urlStr.includes("/bullseyes") || 
+            urlStr.includes("/spots") || urlStr.includes("/drawings")) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              time: "1234567890",
+              sessionHash: "abc123",
+            }),
+          } as Response;
+        }
+        throw new Error(`Unexpected URL: ${urlStr}`);
+      };
+
+      try {
+        await reader.readOnce();
+
+        // Per FR-011: Verify lastTimes updated from response time fields
+        const lastTimes = (reader as unknown as { lastTimes: Record<string, number> }).lastTimes;
+        
+        assert.ok(lastTimes["units"] !== undefined, "lastTimes should have units entry");
+        assert.ok(lastTimes["weapons"] !== undefined, "lastTimes should have weapons entry");
+        assert.ok(lastTimes["logs"] !== undefined, "lastTimes should have logs entry");
+        assert.ok(lastTimes["airbases"] !== undefined, "lastTimes should have airbases entry");
+        assert.ok(lastTimes["bullseyes"] !== undefined, "lastTimes should have bullseyes entry");
+        assert.ok(lastTimes["spots"] !== undefined, "lastTimes should have spots entry");
+        assert.ok(lastTimes["drawings"] !== undefined, "lastTimes should have drawings entry");
+
+        // Verify times are numbers (milliseconds)
+        assert.strictEqual(typeof lastTimes["units"], "number", "units lastTime should be number");
+        assert.strictEqual(typeof lastTimes["weapons"], "number", "weapons lastTime should be number");
+        assert.strictEqual(typeof lastTimes["logs"], "number", "logs lastTime should be number");
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
+
+    test("T046: full refresh (time=0) on initial poll (unit test)", { skip: RUN_INTEGRATION_TESTS }, async () => {
+      const config = createMockConfig();
+      const logger = createMockLogger();
+      const reader = new SnapshotReader(config, logger);
+
+      const fetchedUrls: string[] = [];
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = async (url: string | URL | Request) => {
+        const urlStr = typeof url === "string" ? url : url instanceof URL ? url.toString() : url.url;
+        fetchedUrls.push(urlStr);
+
+        if (urlStr.includes("/mission")) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              mission: { theatre: "Caucasus" },
+              time: "1234567890",
+              sessionHash: "abc123",
+            }),
+          } as Response;
+        }
+        if (urlStr.includes("/units") || urlStr.includes("/weapons")) {
+          const buffer = new ArrayBuffer(9);
+          const view = new DataView(buffer);
+          view.setBigUint64(0, BigInt(1234567890), true);
+          view.setUint8(8, 0xFF);
+          return {
+            ok: true,
+            status: 200,
+            arrayBuffer: async () => buffer,
+          } as Response;
+        }
+        if (urlStr.includes("/logs") || urlStr.includes("/airbases") || urlStr.includes("/bullseyes") || 
+            urlStr.includes("/spots") || urlStr.includes("/drawings")) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              time: "1234567890",
+              sessionHash: "abc123",
+            }),
+          } as Response;
+        }
+        throw new Error(`Unexpected URL: ${urlStr}`);
+      };
+
+      try {
+        // Per FR-017, T046: Initial poll should use time=0 (full refresh)
+        await reader.readOnce();
+
+        const unitsUrl = fetchedUrls.find((url) => url.includes("/units"));
+        const weaponsUrl = fetchedUrls.find((url) => url.includes("/weapons"));
+        const logsUrl = fetchedUrls.find((url) => url.includes("/logs"));
+
+        // Verify no time parameter (or time=0) on first poll
+        assert.ok(unitsUrl !== undefined, "Units endpoint should be fetched");
+        assert.ok(!unitsUrl.includes("time=") || unitsUrl.includes("time=0"), "Units should use full refresh (no time param or time=0) on initial poll");
+        
+        assert.ok(weaponsUrl !== undefined, "Weapons endpoint should be fetched");
+        assert.ok(!weaponsUrl.includes("time=") || weaponsUrl.includes("time=0"), "Weapons should use full refresh on initial poll");
+        
+        assert.ok(logsUrl !== undefined, "Logs endpoint should be fetched");
+        assert.ok(!logsUrl.includes("time=") || logsUrl.includes("time=0"), "Logs should use full refresh on initial poll");
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
+  });
 });
 
