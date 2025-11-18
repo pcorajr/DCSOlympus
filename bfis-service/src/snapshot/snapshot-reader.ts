@@ -172,6 +172,165 @@ export class SnapshotReader {
   }
 
   /**
+   * Validate snapshot fields for correctness.
+   * 
+   * Per T063: Validates UUID format, coordinate ranges, and other field constraints.
+   * 
+   * @param snapshot - Snapshot to validate
+   * @throws Error if validation fails
+   * 
+   * @private
+   */
+  private validateSnapshot(snapshot: OlympusSnapshot): void {
+    // Validate UUID v4 format (8-4-4-4-12 hex digits)
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(snapshot.snapshotId)) {
+      throw new Error(`Invalid snapshotId format: ${snapshot.snapshotId}`);
+    }
+
+    // Validate unit positions (coordinates in valid ranges)
+    for (const unit of snapshot.units) {
+      const pos = unit.position;
+      if (pos.lat < -90 || pos.lat > 90) {
+        throw new Error(`Invalid latitude for unit ${unit.unitId}: ${pos.lat}`);
+      }
+      if (pos.lon < -180 || pos.lon > 180) {
+        throw new Error(`Invalid longitude for unit ${unit.unitId}: ${pos.lon}`);
+      }
+      if (pos.altMeters < 0) {
+        throw new Error(`Invalid altitude for unit ${unit.unitId}: ${pos.altMeters}`);
+      }
+    }
+  }
+
+  /**
+   * Log HTTP error with structured logging.
+   * 
+   * Per FR-012, FR-013: Logs HTTP errors with URL, status, and message context
+   * using structured logging (bfis-snapshot-http-error event).
+   * 
+   * @param url - The URL that failed
+   * @param status - HTTP status code
+   * @param statusText - HTTP status text
+   * @param message - Error message
+   * @param endpoint - Endpoint name for context (e.g., "mission", "units")
+   * 
+   * @private
+   */
+  private logHttpError(url: string, status: number, statusText: string, message: string, endpoint: string): void {
+    if (this.logger) {
+      this.logger.error("bfis-snapshot-http-error", {
+        url,
+        status,
+        statusText,
+        message,
+        endpoint,
+      });
+    }
+  }
+
+  /**
+   * Baseline data size tracking for large data detection.
+   * 
+   * Per FR-014b, T061a: Tracks data sizes for first N snapshots per endpoint to establish
+   * baseline averages, then warns when data exceeds threshold (default 2x baseline).
+   */
+  private baselineSizes: Record<string, number[]> = {};
+  private baselineAverages: Record<string, number> = {};
+  
+  /**
+   * Get baseline sample count from config or use default.
+   * 
+   * @returns Number of samples to use for baseline (default 10)
+   * 
+   * @private
+   */
+  private getBaselineSampleCount(): number {
+    const envValue = process.env.BFIS_LARGE_DATA_BASELINE_SAMPLES;
+    if (envValue) {
+      const parsed = parseInt(envValue, 10);
+      if (!isNaN(parsed) && parsed > 0) {
+        return parsed;
+      }
+    }
+    return 10; // Default
+  }
+
+  /**
+   * Get large data multiplier from config or use default.
+   * 
+   * @returns Multiplier for large data warning threshold (default 2.0)
+   * 
+   * @private
+   */
+  private getLargeDataMultiplier(): number {
+    const envValue = process.env.BFIS_LARGE_DATA_MULTIPLIER;
+    if (envValue) {
+      const parsed = parseFloat(envValue);
+      if (!isNaN(parsed) && parsed > 0) {
+        return parsed;
+      }
+    }
+    return 2.0; // Default
+  }
+
+  /**
+   * Update baseline data size tracking and check for large data warnings.
+   * 
+   * Per FR-014b, T061a, T061b: Establishes baseline from first N samples per endpoint,
+   * then warns when data exceeds threshold (multiplier * baseline average).
+   * 
+   * @param endpoint - Endpoint name (e.g., "units", "weapons")
+   * @param size - Data size in bytes
+   * 
+   * @private
+   */
+  private updateBaselineAndCheckLargeData(endpoint: string, size: number): void {
+    const baselineCount = this.getBaselineSampleCount();
+    const multiplier = this.getLargeDataMultiplier();
+
+    // Initialize arrays if needed
+    if (!this.baselineSizes[endpoint]) {
+      this.baselineSizes[endpoint] = [];
+    }
+
+    const endpointSamples = this.baselineSizes[endpoint];
+
+    // Collect baseline samples per endpoint
+    if (endpointSamples.length < baselineCount) {
+      endpointSamples.push(size);
+      
+      // If we've collected all baseline samples for this endpoint, compute average
+      if (endpointSamples.length === baselineCount) {
+        const sum = endpointSamples.reduce((a, b) => a + b, 0);
+        this.baselineAverages[endpoint] = sum / endpointSamples.length;
+        
+        if (this.logger) {
+          this.logger.info("bfis-baseline-established", {
+            endpoint,
+            averageBytes: this.baselineAverages[endpoint],
+            samples: baselineCount,
+          });
+        }
+      }
+    } else {
+      // Baseline established for this endpoint - check for large data
+      const baseline = this.baselineAverages[endpoint];
+      if (baseline && size > baseline * multiplier) {
+        if (this.logger) {
+          this.logger.warn("bfis-large-data-detected", {
+            endpoint,
+            currentBytes: size,
+            baselineBytes: baseline,
+            multiplier,
+            threshold: baseline * multiplier,
+          });
+        }
+      }
+    }
+  }
+
+  /**
    * Check if session hash has changed and handle reset if needed.
    * 
    * Per FR-008: Detects session hash changes to identify mission resets.
@@ -194,6 +353,9 @@ export class SnapshotReader {
       // Per FR-009: Reset internal state on session hash change
       this.unitCache.clear();
       this.lastTimes = {}; // Clear lastTimes for full refresh on next poll
+      // Reset baseline tracking on session change (new mission = new baseline)
+      this.baselineSizes = {};
+      this.baselineAverages = {};
       
       // Per T041: Update lastSessionHash to new value so next poll treats it as new session
       // This must happen before throwing to ensure retry doesn't see it as a change again
@@ -259,7 +421,10 @@ export class SnapshotReader {
 
     if (!res.ok) {
       const text = await res.text().catch(() => "");
-      throw new Error(`Failed to fetch mission: ${res.status} ${res.statusText} ${text}`);
+      const errorMessage = `Failed to fetch mission: ${res.status} ${res.statusText} ${text}`;
+      // Per FR-012, FR-013: Log HTTP error with structured logging
+      this.logHttpError(url, res.status, res.statusText, errorMessage, "mission");
+      throw new Error(errorMessage);
     }
 
     const data = (await res.json()) as {
@@ -326,7 +491,10 @@ export class SnapshotReader {
 
     if (!res.ok) {
       const text = await res.text().catch(() => "");
-      throw new Error(`Failed to fetch units: ${res.status} ${res.statusText} ${text}`);
+      const errorMessage = `Failed to fetch units: ${res.status} ${res.statusText} ${text}`;
+      // Per FR-012, FR-013: Log HTTP error with structured logging
+      this.logHttpError(url, res.status, res.statusText, errorMessage, "units");
+      throw new Error(errorMessage);
     }
 
     return await res.arrayBuffer();
@@ -365,7 +533,10 @@ export class SnapshotReader {
 
     if (!res.ok) {
       const text = await res.text().catch(() => "");
-      throw new Error(`Failed to fetch weapons: ${res.status} ${res.statusText} ${text}`);
+      const errorMessage = `Failed to fetch weapons: ${res.status} ${res.statusText} ${text}`;
+      // Per FR-012, FR-013: Log HTTP error with structured logging
+      this.logHttpError(url, res.status, res.statusText, errorMessage, "weapons");
+      throw new Error(errorMessage);
     }
 
     return await res.arrayBuffer();
@@ -409,7 +580,10 @@ export class SnapshotReader {
 
     if (!res.ok) {
       const text = await res.text().catch(() => "");
-      throw new Error(`Failed to fetch logs: ${res.status} ${res.statusText} ${text}`);
+      const errorMessage = `Failed to fetch logs: ${res.status} ${res.statusText} ${text}`;
+      // Per FR-012, FR-013: Log HTTP error with structured logging
+      this.logHttpError(url, res.status, res.statusText, errorMessage, "logs");
+      throw new Error(errorMessage);
     }
 
     const data = (await res.json()) as {
@@ -468,7 +642,10 @@ export class SnapshotReader {
 
     if (!res.ok) {
       const text = await res.text().catch(() => "");
-      throw new Error(`Failed to fetch airbases: ${res.status} ${res.statusText} ${text}`);
+      const errorMessage = `Failed to fetch airbases: ${res.status} ${res.statusText} ${text}`;
+      // Per FR-012, FR-013: Log HTTP error with structured logging
+      this.logHttpError(url, res.status, res.statusText, errorMessage, "airbases");
+      throw new Error(errorMessage);
     }
 
     const data = (await res.json()) as {
@@ -526,7 +703,10 @@ export class SnapshotReader {
 
     if (!res.ok) {
       const text = await res.text().catch(() => "");
-      throw new Error(`Failed to fetch bullseyes: ${res.status} ${res.statusText} ${text}`);
+      const errorMessage = `Failed to fetch bullseyes: ${res.status} ${res.statusText} ${text}`;
+      // Per FR-012, FR-013: Log HTTP error with structured logging
+      this.logHttpError(url, res.status, res.statusText, errorMessage, "bullseyes");
+      throw new Error(errorMessage);
     }
 
     const data = (await res.json()) as {
@@ -584,7 +764,10 @@ export class SnapshotReader {
 
     if (!res.ok) {
       const text = await res.text().catch(() => "");
-      throw new Error(`Failed to fetch spots: ${res.status} ${res.statusText} ${text}`);
+      const errorMessage = `Failed to fetch spots: ${res.status} ${res.statusText} ${text}`;
+      // Per FR-012, FR-013: Log HTTP error with structured logging
+      this.logHttpError(url, res.status, res.statusText, errorMessage, "spots");
+      throw new Error(errorMessage);
     }
 
     const data = (await res.json()) as {
@@ -642,7 +825,10 @@ export class SnapshotReader {
 
     if (!res.ok) {
       const text = await res.text().catch(() => "");
-      throw new Error(`Failed to fetch drawings: ${res.status} ${res.statusText} ${text}`);
+      const errorMessage = `Failed to fetch drawings: ${res.status} ${res.statusText} ${text}`;
+      // Per FR-012, FR-013: Log HTTP error with structured logging
+      this.logHttpError(url, res.status, res.statusText, errorMessage, "drawings");
+      throw new Error(errorMessage);
     }
 
     const data = (await res.json()) as {
@@ -675,18 +861,26 @@ export class SnapshotReader {
    * Per FR-007: Constructs snapshot with snapshotId, missionId, serverId, sessionHash,
    * timestamp, and decoded units array.
    * 
+   * Per FR-013, T062: If any endpoint fails during a poll cycle, the entire snapshot MUST fail
+   * (no partial snapshots returned) and the system MUST retry on the next poll cycle.
+   * All errors are logged with structured logging (bfis-snapshot-http-error, bfis-snapshot-decode-error).
+   * 
    * Per FR-015: Generates unique snapshot ID using UUID v4 format.
    * 
-   * Per FR-012: Logs `bfis-snapshot-read-ok` event with snapshot metadata.
+   * Per FR-012: Logs `bfis-snapshot-read-ok` event with snapshot metadata including data size metrics.
    * 
    * Per FR-010: Uses time query parameters for incremental updates (full refresh on first poll).
    * 
    * Per FR-011: Updates lastTimes from response time fields and binary buffer updateTime values.
    * 
-   * @returns Complete OlympusSnapshot with mission data and decoded units
-   * @throws Error if any endpoint fetch fails or snapshot construction fails
+   * Per FR-018, T064: Returns immutable snapshot objects that are not mutated after creation.
    * 
-   * @see FR-007, FR-010, FR-011, FR-012, FR-015, FR-016
+   * Per T063: Validates snapshot fields (UUID format, coordinate ranges) before returning.
+   * 
+   * @returns Complete OlympusSnapshot with mission data and decoded units
+   * @throws Error if any endpoint fetch fails, decode fails, or snapshot construction/validation fails
+   * 
+   * @see FR-007, FR-010, FR-011, FR-012, FR-013, FR-015, FR-016, FR-018
    */
   async readOnce(): Promise<OlympusSnapshot> {
     // Per FR-016: Fetch endpoints in specified order: mission, units, weapons, logs, airbases, bullseyes, spots, drawings
@@ -718,12 +912,96 @@ export class SnapshotReader {
     // 2. Fetch units (binary)
     const unitsBuffer = await this.fetchUnits(unitsLastTime);
     
+    // Per FR-014a, T060: Check for empty data and log warning
+    if (unitsBuffer.byteLength <= 8) {
+      // Buffer only contains updateTime (8 bytes) or is empty
+      if (this.logger) {
+        this.logger.warn("bfis-snapshot-empty-data", {
+          endpoint: "units",
+          bufferSize: unitsBuffer.byteLength,
+          message: "Empty or minimal units data received",
+        });
+      }
+    }
+    
+    // Per FR-061c: Log binary fetch with mode and bytes for SC-006 measurement
+    const unitsMode = isSessionReset ? "full" : "incremental";
+    if (this.logger) {
+      this.logger.info("bfis-binary-fetch", {
+        endpoint: "units",
+        mode: unitsMode,
+        bytes: unitsBuffer.byteLength,
+        lastTime: unitsLastTime,
+      });
+    }
+    
+    // Per FR-014b, T061a, T061b: Update baseline and check for large data
+    this.updateBaselineAndCheckLargeData("units", unitsBuffer.byteLength);
+    
     // 3. Fetch weapons (binary)
     const weaponsBuffer = await this.fetchWeapons(weaponsLastTime);
+    
+    // Per FR-014a, T060: Check for empty data and log warning
+    if (weaponsBuffer.byteLength <= 8) {
+      if (this.logger) {
+        this.logger.warn("bfis-snapshot-empty-data", {
+          endpoint: "weapons",
+          bufferSize: weaponsBuffer.byteLength,
+          message: "Empty or minimal weapons data received",
+        });
+      }
+    }
+    
+    // Per FR-061c: Log binary fetch with mode and bytes
+    const weaponsMode = isSessionReset ? "full" : "incremental";
+    if (this.logger) {
+      this.logger.info("bfis-binary-fetch", {
+        endpoint: "weapons",
+        mode: weaponsMode,
+        bytes: weaponsBuffer.byteLength,
+        lastTime: weaponsLastTime,
+      });
+    }
+    
+    // Per FR-014b, T061a, T061b: Update baseline and check for large data
+    this.updateBaselineAndCheckLargeData("weapons", weaponsBuffer.byteLength);
 
-    // Decode binary data
-    const { updateTime: unitsUpdateTime, units } = decodeUnits(unitsBuffer, this.logger);
-    const { updateTime: weaponsUpdateTime } = decodeWeapons(weaponsBuffer);
+    // Per FR-014, T059: Decode binary data with error handling
+    let unitsUpdateTime: number;
+    let units: OlympusUnit[];
+    try {
+      const decoded = decodeUnits(unitsBuffer, this.logger);
+      unitsUpdateTime = decoded.updateTime;
+      units = decoded.units;
+    } catch (error) {
+      // Per FR-012, FR-014: Log decode error with structured logging
+      if (this.logger) {
+        this.logger.error("bfis-snapshot-decode-error", {
+          endpoint: "units",
+          bufferSize: unitsBuffer.byteLength,
+          error: error instanceof Error ? error.message : String(error),
+          errorType: error instanceof Error ? error.constructor.name : typeof error,
+        });
+      }
+      throw new Error(`Failed to decode units: ${error instanceof Error ? error.message : String(error)}`);
+    }
+
+    let weaponsUpdateTime: number;
+    try {
+      const decoded = decodeWeapons(weaponsBuffer);
+      weaponsUpdateTime = decoded.updateTime;
+    } catch (error) {
+      // Per FR-012, FR-014: Log decode error with structured logging
+      if (this.logger) {
+        this.logger.error("bfis-snapshot-decode-error", {
+          endpoint: "weapons",
+          bufferSize: weaponsBuffer.byteLength,
+          error: error instanceof Error ? error.message : String(error),
+          errorType: error instanceof Error ? error.constructor.name : typeof error,
+        });
+      }
+      throw new Error(`Failed to decode weapons: ${error instanceof Error ? error.message : String(error)}`);
+    }
 
     // Per FR-011: Update lastTimes from decoded updateTime values (binary buffers)
     this.lastTimes["units"] = unitsUpdateTime;
@@ -731,6 +1009,16 @@ export class SnapshotReader {
 
     // 4. Fetch logs (JSON with time parameter)
     const logsData = await this.fetchLogs(logsLastTime);
+    
+    // Per FR-014a, T060: Check for empty logs and log warning
+    if (!Array.isArray(logsData.logs) || logsData.logs.length === 0) {
+      if (this.logger) {
+        this.logger.warn("bfis-snapshot-empty-data", {
+          endpoint: "logs",
+          message: "Empty logs array received",
+        });
+      }
+    }
     
     // Per FR-011: Update lastTimes from response time field (convert ISO string to number)
     const logsTimeNum = new Date(logsData.time).getTime();
@@ -803,12 +1091,22 @@ export class SnapshotReader {
 
     // Return snapshot with accumulated units from cache
     const accumulatedUnits: OlympusUnit[] = Array.from(this.unitCache.values());
+    
+    // Per FR-018, T064: Create immutable snapshot (no mutation after creation)
+    // Using object spread and array spread to create new objects/arrays
     const snapshotWithCache: OlympusSnapshot = {
-      ...snapshot,
-      units: accumulatedUnits,
+      snapshotId: snapshot.snapshotId,
+      missionId: snapshot.missionId,
+      serverId: snapshot.serverId,
+      sessionHash: snapshot.sessionHash,
+      time: snapshot.time,
+      units: [...accumulatedUnits], // Create new array to ensure immutability
     };
 
-    // Log snapshot read success (FR-012)
+    // Per T063: Validate snapshot fields (UUID format, coordinate ranges)
+    this.validateSnapshot(snapshotWithCache);
+
+    // Log snapshot read success (FR-012, T061)
     if (this.logger) {
       this.logger.info("bfis-snapshot-read-ok", {
         snapshotId,

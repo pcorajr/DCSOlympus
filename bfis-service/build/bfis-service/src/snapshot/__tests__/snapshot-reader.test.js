@@ -28,6 +28,72 @@ import { createStructuredLogger } from "../../logger/structured-logger.js";
 // Check if we should run integration tests (default: true)
 const RUN_INTEGRATION_TESTS = process.env.INTEGRATION_TEST !== "false";
 /**
+ * Create a mock response for all Olympus endpoints.
+ *
+ * Helper function to mock all endpoints that readOnce() fetches.
+ *
+ * @param missionData - Optional mission data override
+ * @param unitsBuffer - Optional units buffer override
+ * @param weaponsBuffer - Optional weapons buffer override
+ * @returns Mock fetch function that handles all endpoints
+ */
+function createMockFetchForAllEndpoints(missionData, unitsBuffer, weaponsBuffer) {
+    return async (url) => {
+        const urlStr = typeof url === "string" ? url : url instanceof URL ? url.toString() : url.url;
+        if (urlStr.includes("/mission")) {
+            return {
+                ok: true,
+                status: 200,
+                json: async () => ({
+                    mission: { theatre: missionData?.theatre ?? "Caucasus" },
+                    time: missionData?.time ?? "1234567890",
+                    sessionHash: missionData?.sessionHash ?? "abc123",
+                }),
+            };
+        }
+        if (urlStr.includes("/units")) {
+            const buffer = unitsBuffer ?? (() => {
+                const buf = new ArrayBuffer(9);
+                const view = new DataView(buf);
+                view.setBigUint64(0, BigInt(1234567890), true);
+                view.setUint8(8, 0xFF);
+                return buf;
+            })();
+            return {
+                ok: true,
+                status: 200,
+                arrayBuffer: async () => buffer,
+            };
+        }
+        if (urlStr.includes("/weapons")) {
+            const buffer = weaponsBuffer ?? (() => {
+                const buf = new ArrayBuffer(9);
+                const view = new DataView(buf);
+                view.setBigUint64(0, BigInt(1234567890), true);
+                view.setUint8(8, 0xFF);
+                return buf;
+            })();
+            return {
+                ok: true,
+                status: 200,
+                arrayBuffer: async () => buffer,
+            };
+        }
+        if (urlStr.includes("/logs") || urlStr.includes("/airbases") || urlStr.includes("/bullseyes") ||
+            urlStr.includes("/spots") || urlStr.includes("/drawings")) {
+            return {
+                ok: true,
+                status: 200,
+                json: async () => ({
+                    time: "1234567890",
+                    sessionHash: missionData?.sessionHash ?? "abc123",
+                }),
+            };
+        }
+        throw new Error(`Unexpected URL: ${urlStr}`);
+    };
+}
+/**
  * Create a mock BfisConfig for testing.
  */
 function createMockConfig() {
@@ -202,25 +268,13 @@ describe("SnapshotReader", () => {
             const config = createMockConfig();
             const logger = createMockLogger();
             const reader = new SnapshotReader(config, logger);
-            // Mock fetch to return mission response
+            // Mock fetch to return all endpoint responses (readOnce now fetches all endpoints)
             const originalFetch = globalThis.fetch;
-            globalThis.fetch = async (url) => {
-                const urlStr = typeof url === "string" ? url : url instanceof URL ? url.toString() : url.url;
-                if (urlStr.includes("/mission")) {
-                    return {
-                        ok: true,
-                        status: 200,
-                        json: async () => ({
-                            mission: {
-                                theatre: "Caucasus",
-                            },
-                            time: "1234567890",
-                            sessionHash: "abc123",
-                        }),
-                    };
-                }
-                throw new Error(`Unexpected URL: ${urlStr}`);
-            };
+            globalThis.fetch = createMockFetchForAllEndpoints({
+                theatre: "Caucasus",
+                time: "1234567890",
+                sessionHash: "abc123",
+            });
             try {
                 const snapshot = await reader.readOnce();
                 // Verify snapshot structure
@@ -257,6 +311,7 @@ describe("SnapshotReader", () => {
             globalThis.fetch = async (url) => {
                 const urlStr = typeof url === "string" ? url : url instanceof URL ? url.toString() : url.url;
                 callCount++;
+                // Use helper but override mission to return different hash on second call
                 if (urlStr.includes("/mission")) {
                     return {
                         ok: true,
@@ -264,23 +319,13 @@ describe("SnapshotReader", () => {
                         json: async () => ({
                             mission: { theatre: "Caucasus" },
                             time: "1234567890",
-                            sessionHash: callCount === 1 ? "abc123" : "xyz789", // Different hash on second call
+                            sessionHash: callCount <= 8 ? "abc123" : "xyz789", // Different hash on second poll cycle
                         }),
                     };
                 }
-                if (urlStr.includes("/units") || urlStr.includes("/weapons")) {
-                    // Return empty binary buffer (just updateTime + endOfData)
-                    const buffer = new ArrayBuffer(9);
-                    const view = new DataView(buffer);
-                    view.setBigUint64(0, BigInt(1234567890), true); // updateTime
-                    view.setUint8(8, 0xFF); // EndOfData
-                    return {
-                        ok: true,
-                        status: 200,
-                        arrayBuffer: async () => buffer,
-                    };
-                }
-                throw new Error(`Unexpected URL: ${urlStr}`);
+                // Use helper for all other endpoints
+                const mockFetch = createMockFetchForAllEndpoints();
+                return await mockFetch(url);
             };
             try {
                 // First poll
@@ -310,6 +355,7 @@ describe("SnapshotReader", () => {
             globalThis.fetch = async (url) => {
                 const urlStr = typeof url === "string" ? url : url instanceof URL ? url.toString() : url.url;
                 callCount++;
+                // Override mission to return different hash on second poll
                 if (urlStr.includes("/mission")) {
                     return {
                         ok: true,
@@ -317,22 +363,13 @@ describe("SnapshotReader", () => {
                         json: async () => ({
                             mission: { theatre: "Caucasus" },
                             time: "1234567890",
-                            sessionHash: callCount === 1 ? "hash1" : "hash2",
+                            sessionHash: callCount <= 8 ? "hash1" : "hash2", // Different hash on second poll cycle
                         }),
                     };
                 }
-                if (urlStr.includes("/units") || urlStr.includes("/weapons")) {
-                    const buffer = new ArrayBuffer(9);
-                    const view = new DataView(buffer);
-                    view.setBigUint64(0, BigInt(1234567890), true);
-                    view.setUint8(8, 0xFF);
-                    return {
-                        ok: true,
-                        status: 200,
-                        arrayBuffer: async () => buffer,
-                    };
-                }
-                throw new Error(`Unexpected URL: ${urlStr}`);
+                // Use helper for all other endpoints
+                const mockFetch = createMockFetchForAllEndpoints();
+                return await mockFetch(url);
             };
             try {
                 await reader.readOnce(); // First poll
@@ -355,6 +392,7 @@ describe("SnapshotReader", () => {
             globalThis.fetch = async (url) => {
                 const urlStr = typeof url === "string" ? url : url instanceof URL ? url.toString() : url.url;
                 callCount++;
+                // Override mission to return different hash on second poll
                 if (urlStr.includes("/mission")) {
                     return {
                         ok: true,
@@ -362,22 +400,13 @@ describe("SnapshotReader", () => {
                         json: async () => ({
                             mission: { theatre: "Caucasus" },
                             time: "1234567890",
-                            sessionHash: callCount === 1 ? "hash1" : "hash2",
+                            sessionHash: callCount <= 8 ? "hash1" : "hash2", // Different hash on second poll cycle
                         }),
                     };
                 }
-                if (urlStr.includes("/units") || urlStr.includes("/weapons")) {
-                    const buffer = new ArrayBuffer(9);
-                    const view = new DataView(buffer);
-                    view.setBigUint64(0, BigInt(1234567890), true);
-                    view.setUint8(8, 0xFF);
-                    return {
-                        ok: true,
-                        status: 200,
-                        arrayBuffer: async () => buffer,
-                    };
-                }
-                throw new Error(`Unexpected URL: ${urlStr}`);
+                // Use helper for all other endpoints
+                const mockFetch = createMockFetchForAllEndpoints();
+                return await mockFetch(url);
             };
             try {
                 // First poll - should set lastTimes
@@ -418,18 +447,9 @@ describe("SnapshotReader", () => {
                         }),
                     };
                 }
-                if (urlStr.includes("/units") || urlStr.includes("/weapons")) {
-                    const buffer = new ArrayBuffer(9);
-                    const view = new DataView(buffer);
-                    view.setBigUint64(0, BigInt(1234567890), true);
-                    view.setUint8(8, 0xFF);
-                    return {
-                        ok: true,
-                        status: 200,
-                        arrayBuffer: async () => buffer,
-                    };
-                }
-                throw new Error(`Unexpected URL: ${urlStr}`);
+                // Use helper for all other endpoints
+                const mockFetch = createMockFetchForAllEndpoints();
+                return await mockFetch(url);
             };
             try {
                 // First poll: establish session hash "hash1"
@@ -731,6 +751,103 @@ describe("SnapshotReader", () => {
                 assert.ok(!weaponsUrl.includes("time=") || weaponsUrl.includes("time=0"), "Weapons should use full refresh on initial poll");
                 assert.ok(logsUrl !== undefined, "Logs endpoint should be fetched");
                 assert.ok(!logsUrl.includes("time=") || logsUrl.includes("time=0"), "Logs should use full refresh on initial poll");
+            }
+            finally {
+                globalThis.fetch = originalFetch;
+            }
+        });
+        test("T070: incremental update size reduction (SC-006) comparing full vs incremental fetch sizes (unit test)", { skip: RUN_INTEGRATION_TESTS }, async () => {
+            const config = createMockConfig();
+            const logger = createMockLogger();
+            const reader = new SnapshotReader(config, logger);
+            // Track fetch sizes
+            const fetchSizes = [];
+            const originalFetch = globalThis.fetch;
+            globalThis.fetch = async (url) => {
+                const urlStr = typeof url === "string" ? url : url instanceof URL ? url.toString() : url.url;
+                if (urlStr.includes("/mission")) {
+                    return {
+                        ok: true,
+                        status: 200,
+                        json: async () => ({
+                            mission: { theatre: "Caucasus" },
+                            time: "1234567890",
+                            sessionHash: "abc123",
+                        }),
+                    };
+                }
+                if (urlStr.includes("/units")) {
+                    // Simulate different sizes: full refresh = 1000 bytes, incremental = 200 bytes
+                    const isFullRefresh = !urlStr.includes("time=") || urlStr.includes("time=0");
+                    const bufferSize = isFullRefresh ? 1000 : 200;
+                    const buffer = new ArrayBuffer(bufferSize);
+                    const view = new DataView(buffer);
+                    view.setBigUint64(0, BigInt(1234567890), true);
+                    // Fill rest with data (simplified - just need size difference)
+                    for (let i = 8; i < bufferSize - 1; i++) {
+                        view.setUint8(i, 0x01);
+                    }
+                    view.setUint8(bufferSize - 1, 0xFF); // EndOfData
+                    fetchSizes.push({
+                        endpoint: "units",
+                        mode: isFullRefresh ? "full" : "incremental",
+                        bytes: bufferSize,
+                    });
+                    return {
+                        ok: true,
+                        status: 200,
+                        arrayBuffer: async () => buffer,
+                    };
+                }
+                if (urlStr.includes("/weapons")) {
+                    const buffer = new ArrayBuffer(9);
+                    const view = new DataView(buffer);
+                    view.setBigUint64(0, BigInt(1234567890), true);
+                    view.setUint8(8, 0xFF);
+                    return {
+                        ok: true,
+                        status: 200,
+                        arrayBuffer: async () => buffer,
+                    };
+                }
+                if (urlStr.includes("/logs") || urlStr.includes("/airbases") || urlStr.includes("/bullseyes") ||
+                    urlStr.includes("/spots") || urlStr.includes("/drawings")) {
+                    return {
+                        ok: true,
+                        status: 200,
+                        json: async () => ({
+                            time: "1234567890",
+                            sessionHash: "abc123",
+                        }),
+                    };
+                }
+                throw new Error(`Unexpected URL: ${urlStr}`);
+            };
+            try {
+                // First poll: full refresh
+                await reader.readOnce();
+                // Second poll: incremental update
+                await reader.readOnce();
+                // Per SC-006: Verify incremental update is significantly smaller than full refresh
+                const fullRefresh = fetchSizes.find((f) => f.mode === "full");
+                const incremental = fetchSizes.find((f) => f.mode === "incremental");
+                assert.ok(fullRefresh !== undefined, "Full refresh should be logged");
+                assert.ok(incremental !== undefined, "Incremental update should be logged");
+                if (fullRefresh && incremental) {
+                    // Verify incremental is smaller (in this test, 200 < 1000)
+                    assert.ok(incremental.bytes < fullRefresh.bytes, `Incremental update (${incremental.bytes} bytes) should be smaller than full refresh (${fullRefresh.bytes} bytes)`);
+                    // Verify bfis-binary-fetch events were logged with correct mode and bytes
+                    const binaryFetchLogs = logger.logs.filter((log) => log.event === "bfis-binary-fetch");
+                    assert.ok(binaryFetchLogs.length >= 2, "Should have at least 2 bfis-binary-fetch logs");
+                    const fullLog = binaryFetchLogs.find((log) => log.meta?.mode === "full");
+                    const incrementalLog = binaryFetchLogs.find((log) => log.meta?.mode === "incremental");
+                    assert.ok(fullLog !== undefined, "Full refresh should be logged in bfis-binary-fetch");
+                    assert.ok(incrementalLog !== undefined, "Incremental update should be logged in bfis-binary-fetch");
+                    if (fullLog && incrementalLog) {
+                        assert.strictEqual(fullLog.meta?.bytes, fullRefresh.bytes);
+                        assert.strictEqual(incrementalLog.meta?.bytes, incremental.bytes);
+                    }
+                }
             }
             finally {
                 globalThis.fetch = originalFetch;

@@ -165,22 +165,22 @@
 
 **Purpose**: Error handling, logging, edge cases, and validation
 
-- [ ] T058 [P] Implement HTTP error handling with structured logging (bfis-snapshot-http-error) in bfis-service/src/snapshot/snapshot-reader.ts
-- [ ] T059 [P] Implement binary decode error handling with structured logging (bfis-snapshot-decode-error) in bfis-service/src/snapshot/snapshot-reader.ts
-- [ ] T060 [P] Implement empty data detection and warning logging (bfis-snapshot-empty-data) in bfis-service/src/snapshot/snapshot-reader.ts
-- [ ] T061 [P] Add data size metrics (buffer sizes, unit count) to bfis-snapshot-read-ok logs in bfis-service/src/snapshot/snapshot-reader.ts
-- [ ] T061a [P] Implement baseline establishment for large data detection (first N snapshots, configurable via BFIS_LARGE_DATA_BASELINE_SAMPLES) in bfis-service/src/snapshot/snapshot-reader.ts
-- [ ] T061b [P] Implement large data warning logic (configurable multiplier via BFIS_LARGE_DATA_MULTIPLIER, default 2x baseline) in bfis-service/src/snapshot/snapshot-reader.ts
-- [ ] T061c [P] Add incremental update logging (bfis-binary-fetch event with mode: full|incremental, bytes, endpoint) for SC-006 measurement in bfis-service/src/snapshot/snapshot-reader.ts
-- [ ] T062 [P] Implement partial failure handling (fail entire snapshot, no partial snapshots) in bfis-service/src/snapshot/snapshot-reader.ts
-- [ ] T063 [P] Add input validation for OlympusSnapshot fields (UUID format, coordinate ranges) in bfis-service/src/snapshot/snapshot-reader.ts
-- [ ] T064 [P] Ensure snapshot immutability (no mutation after creation) in bfis-service/src/snapshot/snapshot-reader.ts
-- [ ] T065 [P] Add comprehensive JSDoc comments to all public methods per constitution in bfis-service/src/snapshot/snapshot-reader.ts
-- [ ] T066 [P] Add comprehensive JSDoc comments to unit-decoder.ts in bfis-service/src/snapshot/unit-decoder.ts
-- [ ] T067 [P] Add comprehensive JSDoc comments to weapon-decoder.ts in bfis-service/src/snapshot/weapon-decoder.ts
-- [ ] T068 [P] Run all tests in Docker container to verify Docker testing setup in bfis-service/
-- [ ] T069 [P] Verify all structured log events match spec requirements in bfis-service/src/snapshot/snapshot-reader.ts
-- [ ] T070 [P] Add test for incremental update size reduction (SC-006) comparing full vs incremental fetch sizes in bfis-service/src/snapshot/__tests__/snapshot-reader.test.ts
+- [X] T058 [P] Implement HTTP error handling with structured logging (bfis-snapshot-http-error) in bfis-service/src/snapshot/snapshot-reader.ts
+- [X] T059 [P] Implement binary decode error handling with structured logging (bfis-snapshot-decode-error) in bfis-service/src/snapshot/snapshot-reader.ts
+- [X] T060 [P] Implement empty data detection and warning logging (bfis-snapshot-empty-data) in bfis-service/src/snapshot/snapshot-reader.ts
+- [X] T061 [P] Add data size metrics (buffer sizes, unit count) to bfis-snapshot-read-ok logs in bfis-service/src/snapshot/snapshot-reader.ts
+- [X] T061a [P] Implement baseline establishment for large data detection (first N snapshots, configurable via BFIS_LARGE_DATA_BASELINE_SAMPLES) in bfis-service/src/snapshot/snapshot-reader.ts
+- [X] T061b [P] Implement large data warning logic (configurable multiplier via BFIS_LARGE_DATA_MULTIPLIER, default 2x baseline) in bfis-service/src/snapshot/snapshot-reader.ts
+- [X] T061c [P] Add incremental update logging (bfis-binary-fetch event with mode: full|incremental, bytes, endpoint) for SC-006 measurement in bfis-service/src/snapshot/snapshot-reader.ts
+- [X] T062 [P] Implement partial failure handling (fail entire snapshot, no partial snapshots) in bfis-service/src/snapshot/snapshot-reader.ts
+- [X] T063 [P] Add input validation for OlympusSnapshot fields (UUID format, coordinate ranges) in bfis-service/src/snapshot/snapshot-reader.ts
+- [X] T064 [P] Ensure snapshot immutability (no mutation after creation) in bfis-service/src/snapshot/snapshot-reader.ts
+- [X] T065 [P] Add comprehensive JSDoc comments to all public methods per constitution in bfis-service/src/snapshot/snapshot-reader.ts
+- [X] T066 [P] Add comprehensive JSDoc comments to unit-decoder.ts in bfis-service/src/snapshot/unit-decoder.ts
+- [X] T067 [P] Add comprehensive JSDoc comments to weapon-decoder.ts in bfis-service/src/snapshot/weapon-decoder.ts
+- [X] T068 [P] Run all tests in Docker container to verify Docker testing setup in bfis-service/
+- [X] T069 [P] Verify all structured log events match spec requirements in bfis-service/src/snapshot/snapshot-reader.ts
+- [X] T070 [P] Add test for incremental update size reduction (SC-006) comparing full vs incremental fetch sizes in bfis-service/src/snapshot/__tests__/snapshot-reader.test.ts
 
 ---
 

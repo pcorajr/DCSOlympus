@@ -2,7 +2,8 @@
 
 **Feature Branch**: `001-bfis-snapshot-decoders`  
 **Created**: 2025-11-16  
-**Status**: Draft  
+**Completed**: 2025-11-17  
+**Status**: ✅ Complete  
 **Input**: User description: "@spec-001.md  already created spec folder :specs/001-bfis-snapshot-decoders"
 
 ## Clarifications
