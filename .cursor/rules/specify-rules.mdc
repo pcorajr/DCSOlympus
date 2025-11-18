@@ -3,6 +3,7 @@
 Auto-generated from all feature plans. Last updated: 2025-11-16
 
 ## Active Technologies
+- In-memory only (no persistent storage). Context snapshots are ephemeral, created on-demand during polling cycles. (002-context-snapshot)
 
 - TypeScript 5.8.2 / Node.js 20+ (ES2023, NodeNext module resolution) (001-bfis-snapshot-decoders)
 
@@ -25,6 +26,7 @@ Always Test by using the docker container.
 TypeScript 5.8.2 / Node.js 20+ (ES2023, NodeNext module resolution): Follow standard conventions
 
 ## Recent Changes
+- 002-context-snapshot: Added TypeScript 5.8.2 / Node.js 20+ (ES2023, NodeNext module resolution)
 
 - 001-bfis-snapshot-decoders: Added TypeScript 5.8.2 / Node.js 20+ (ES2023, NodeNext module resolution)
 
