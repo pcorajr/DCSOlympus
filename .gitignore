@@ -44,3 +44,4 @@ manager/manager.log
 /frontend/server/build
 /frontend/react/.vite
 bfis-service/logs/*.log
+bfis-service/build.backup/
