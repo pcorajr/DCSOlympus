@@ -83,45 +83,71 @@ describe("Context Normalizers", () => {
 
   describe("normalizeSpots", () => {
     it("normalizes spots and filters invalid ones", () => {
+      // Olympus returns object format: { spots: { "id": {...}, ... } }
+      const raw = {
+        spots: {
+          "2": { type: "laser", code: 1688, targetPosition: { lat: 10, lng: 10 } },
+          "3": { type: "infrared", targetPosition: { lat: 20, lng: 20 } },
+          "4": { type: "laser", code: 1111, targetPosition: { lat: 30, lng: 30 } }
+        }
+      };
+
+      const result = normalizeSpots(raw);
+      
+      assert.equal(result.length, 3);
+      // Sorted by ID: "2", "3", "4"
+      
+      assert.equal(result[0].id, "2");
+      assert.equal(result[0].type, "laser");
+      assert.equal(result[0].position?.lat, 10);
+      assert.equal(result[0].position?.lon, 10);
+      
+      assert.equal(result[1].id, "3");
+      assert.equal(result[1].type, "infrared");
+      assert.equal(result[1].position?.lat, 20);
+      
+      assert.equal(result[2].id, "4");
+      assert.equal(result[2].type, "laser");
+    });
+
+    it("handles array format (future-proofing)", () => {
       const raw = {
         spots: [
-          { id: "spot-2", lat: 10, lon: 10, code: 1688 },
-          { code: 1111 }, // No ID, but code fallback? Logic says safeId || code
-          { lat: 20 }     // No ID, no code -> skip
+          { id: "spot-1", type: "laser", lat: 10, lon: 10, code: 1688 },
+          { code: 1111, type: "infrared", lat: 20, lon: 20 }
         ]
       };
 
       const result = normalizeSpots(raw);
       
-      // item 1: id="spot-2" -> valid
-      // item 2: code=1111 -> valid via fallback
-      // item 3: invalid
-      
       assert.equal(result.length, 2);
-      // Sorted string IDs: "1111" < "spot-2"
-      
       assert.equal(result[0].id, "1111");
-      assert.equal(result[1].id, "spot-2");
+      assert.equal(result[1].id, "spot-1");
     });
   });
 
   describe("normalizeDrawings", () => {
     it("normalizes drawings", () => {
+      // Olympus returns nested structure: drawings -> layer -> coalition -> entries
       const raw = {
-        drawings: [
-          { name: "Zone A", points: [] }, // name as ID
-          { id: "draw-1", text: "Label 1" }
-        ]
+        drawings: {
+          navpoints: {
+            blue: {
+              "draw-1": { text: "Label 1", lat: 10, lon: 20 },
+              "Zone A": { name: "Zone A", points: [] }
+            }
+          }
+        }
       };
 
       const result = normalizeDrawings(raw);
       
       assert.equal(result.length, 2);
-      // "Zone A" vs "draw-1"
+      // Sorted by ID: "Zone A" vs "draw-1"
       
       const zone = result.find(d => d.id === "Zone A");
       assert.ok(zone);
-      assert.equal(zone.label, "Zone A"); // Fallback label to name
+      assert.equal(zone.label, "Zone A"); // Uses name as label
 
       const draw1 = result.find(d => d.id === "draw-1");
       assert.ok(draw1);

@@ -815,6 +815,8 @@ export class SnapshotReader {
    * 
    * @returns Parsed JSON response with drawings and metadata (time, sessionHash, etc.)
    * @throws Error if fetch fails or response cannot be parsed
+   * 
+   * @defect DRAWINGS-001: Endpoint returns empty objects - see normalizeDrawings() for details
    */
   private async fetchDrawings(): Promise<{
     drawings: unknown;
@@ -1175,31 +1177,123 @@ export class SnapshotReader {
     
     const logsPromise = this.fetchLogs(logsLastTime)
       .catch(err => {
-        this.logger?.warn("bfis-context-partial-failure", { endpoint: "logs", error: String(err) });
+        // Per FR-008, FR-009: Log errors using existing event names from spec-001
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        const baseUrl = this.config.olympusBaseUrl.replace(/\/+$/, "");
+        if (errorMsg.includes("Failed to fetch")) {
+          // HTTP error - extract status if available
+          const statusMatch = errorMsg.match(/(\d{3})\s/);
+          this.logger?.error("bfis-snapshot-http-error", {
+            url: `${baseUrl}/logs${logsLastTime > 0 ? `?time=${logsLastTime}` : ""}`,
+            status: statusMatch ? parseInt(statusMatch[1], 10) : undefined,
+            statusText: errorMsg.includes("Unauthorized") ? "Unauthorized" : undefined,
+            message: errorMsg,
+            endpoint: "logs",
+          });
+        } else {
+          // Parse/decode error
+          this.logger?.error("bfis-snapshot-decode-error", {
+            endpoint: "logs",
+            error: errorMsg,
+            errorType: err instanceof Error ? err.constructor.name : typeof err,
+          });
+        }
         return { logs: [], time: missionData.time, sessionHash: missionData.sessionHash };
       });
 
     const airbasesPromise = this.fetchAirbases()
       .catch(err => {
-        this.logger?.warn("bfis-context-partial-failure", { endpoint: "airbases", error: String(err) });
+        // Per FR-008, FR-009: Log errors using existing event names from spec-001
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        const baseUrl = this.config.olympusBaseUrl.replace(/\/+$/, "");
+        if (errorMsg.includes("Failed to fetch")) {
+          const statusMatch = errorMsg.match(/(\d{3})\s/);
+          this.logger?.error("bfis-snapshot-http-error", {
+            url: `${baseUrl}/airbases`,
+            status: statusMatch ? parseInt(statusMatch[1], 10) : undefined,
+            statusText: errorMsg.includes("Unauthorized") ? "Unauthorized" : undefined,
+            message: errorMsg,
+            endpoint: "airbases",
+          });
+        } else {
+          this.logger?.error("bfis-snapshot-decode-error", {
+            endpoint: "airbases",
+            error: errorMsg,
+            errorType: err instanceof Error ? err.constructor.name : typeof err,
+          });
+        }
         return { airbases: [], time: missionData.time, sessionHash: missionData.sessionHash };
       });
 
     const bullseyesPromise = this.fetchBullseyes()
       .catch(err => {
-        this.logger?.warn("bfis-context-partial-failure", { endpoint: "bullseyes", error: String(err) });
+        // Per FR-008, FR-009: Log errors using existing event names from spec-001
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        const baseUrl = this.config.olympusBaseUrl.replace(/\/+$/, "");
+        if (errorMsg.includes("Failed to fetch")) {
+          const statusMatch = errorMsg.match(/(\d{3})\s/);
+          this.logger?.error("bfis-snapshot-http-error", {
+            url: `${baseUrl}/bullseyes`,
+            status: statusMatch ? parseInt(statusMatch[1], 10) : undefined,
+            statusText: errorMsg.includes("Unauthorized") ? "Unauthorized" : undefined,
+            message: errorMsg,
+            endpoint: "bullseyes",
+          });
+        } else {
+          this.logger?.error("bfis-snapshot-decode-error", {
+            endpoint: "bullseyes",
+            error: errorMsg,
+            errorType: err instanceof Error ? err.constructor.name : typeof err,
+          });
+        }
         return { bullseyes: {}, time: missionData.time, sessionHash: missionData.sessionHash };
       });
       
     const spotsPromise = this.fetchSpots()
       .catch(err => {
-        this.logger?.warn("bfis-context-partial-failure", { endpoint: "spots", error: String(err) });
+        // Per FR-008, FR-009: Log errors using existing event names from spec-001
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        const baseUrl = this.config.olympusBaseUrl.replace(/\/+$/, "");
+        if (errorMsg.includes("Failed to fetch")) {
+          const statusMatch = errorMsg.match(/(\d{3})\s/);
+          this.logger?.error("bfis-snapshot-http-error", {
+            url: `${baseUrl}/spots`,
+            status: statusMatch ? parseInt(statusMatch[1], 10) : undefined,
+            statusText: errorMsg.includes("Unauthorized") ? "Unauthorized" : undefined,
+            message: errorMsg,
+            endpoint: "spots",
+          });
+        } else {
+          this.logger?.error("bfis-snapshot-decode-error", {
+            endpoint: "spots",
+            error: errorMsg,
+            errorType: err instanceof Error ? err.constructor.name : typeof err,
+          });
+        }
         return { spots: [], time: missionData.time, sessionHash: missionData.sessionHash };
       });
 
     const drawingsPromise = this.fetchDrawings()
       .catch(err => {
-        this.logger?.warn("bfis-context-partial-failure", { endpoint: "drawings", error: String(err) });
+        // Per FR-008, FR-009: Log errors using existing event names from spec-001
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        const baseUrl = this.config.olympusBaseUrl.replace(/\/+$/, "");
+        if (errorMsg.includes("Failed to fetch")) {
+          const statusMatch = errorMsg.match(/(\d{3})\s/);
+          this.logger?.error("bfis-snapshot-http-error", {
+            url: `${baseUrl}/drawings`,
+            status: statusMatch ? parseInt(statusMatch[1], 10) : undefined,
+            statusText: errorMsg.includes("Unauthorized") ? "Unauthorized" : undefined,
+            message: errorMsg,
+            endpoint: "drawings",
+          });
+        } else {
+          this.logger?.error("bfis-snapshot-decode-error", {
+            endpoint: "drawings",
+            error: errorMsg,
+            errorType: err instanceof Error ? err.constructor.name : typeof err,
+          });
+        }
         return { drawings: [], time: missionData.time, sessionHash: missionData.sessionHash };
       });
 
@@ -1262,27 +1356,49 @@ export class SnapshotReader {
     // 6. Normalize Context
     const normalizedLogs = normalizeLogs(logsData);
     const normalizedAirbases = normalizeAirbases(airbasesData, this.logger);
-    const normalizedBullseyes = normalizeBullseyes(bullseyesData.bullseyes);
+    // Pass the bullseyes object, not the full response (which includes time/sessionHash)
+    const normalizedBullseyes = normalizeBullseyes((bullseyesData as { bullseyes?: unknown }).bullseyes ?? bullseyesData);
     const normalizedSpots = normalizeSpots(spotsData, this.logger);
     const normalizedDrawings = normalizeDrawings(drawingsData, this.logger);
 
     // Check for large context data (FR-017)
+    // Per FR-017: Use existing event name bfis-snapshot-empty-data extended with endpoint and entryCount
     const LARGE_CONTEXT_THRESHOLD = 1000;
     if (this.logger) {
-      if (normalizedLogs.length > LARGE_CONTEXT_THRESHOLD) {
-        this.logger.warn("bfis-large-context-data", { endpoint: "logs", count: normalizedLogs.length, threshold: LARGE_CONTEXT_THRESHOLD });
+      if (normalizedLogs.length >= LARGE_CONTEXT_THRESHOLD) {
+        this.logger.warn("bfis-snapshot-empty-data", {
+          endpoint: "logs",
+          entryCount: normalizedLogs.length,
+          threshold: LARGE_CONTEXT_THRESHOLD,
+        });
       }
-      if (normalizedAirbases.length > LARGE_CONTEXT_THRESHOLD) {
-        this.logger.warn("bfis-large-context-data", { endpoint: "airbases", count: normalizedAirbases.length, threshold: LARGE_CONTEXT_THRESHOLD });
+      if (normalizedAirbases.length >= LARGE_CONTEXT_THRESHOLD) {
+        this.logger.warn("bfis-snapshot-empty-data", {
+          endpoint: "airbases",
+          entryCount: normalizedAirbases.length,
+          threshold: LARGE_CONTEXT_THRESHOLD,
+        });
       }
-      if (normalizedBullseyes.length > LARGE_CONTEXT_THRESHOLD) {
-        this.logger.warn("bfis-large-context-data", { endpoint: "bullseyes", count: normalizedBullseyes.length, threshold: LARGE_CONTEXT_THRESHOLD });
+      if (normalizedBullseyes.length >= LARGE_CONTEXT_THRESHOLD) {
+        this.logger.warn("bfis-snapshot-empty-data", {
+          endpoint: "bullseyes",
+          entryCount: normalizedBullseyes.length,
+          threshold: LARGE_CONTEXT_THRESHOLD,
+        });
       }
-      if (normalizedSpots.length > LARGE_CONTEXT_THRESHOLD) {
-        this.logger.warn("bfis-large-context-data", { endpoint: "spots", count: normalizedSpots.length, threshold: LARGE_CONTEXT_THRESHOLD });
+      if (normalizedSpots.length >= LARGE_CONTEXT_THRESHOLD) {
+        this.logger.warn("bfis-snapshot-empty-data", {
+          endpoint: "spots",
+          entryCount: normalizedSpots.length,
+          threshold: LARGE_CONTEXT_THRESHOLD,
+        });
       }
-      if (normalizedDrawings.length > LARGE_CONTEXT_THRESHOLD) {
-        this.logger.warn("bfis-large-context-data", { endpoint: "drawings", count: normalizedDrawings.length, threshold: LARGE_CONTEXT_THRESHOLD });
+      if (normalizedDrawings.length >= LARGE_CONTEXT_THRESHOLD) {
+        this.logger.warn("bfis-snapshot-empty-data", {
+          endpoint: "drawings",
+          entryCount: normalizedDrawings.length,
+          threshold: LARGE_CONTEXT_THRESHOLD,
+        });
       }
     }
 

@@ -61,10 +61,11 @@ Think of BFIS as a loop that keeps doing five things:
 4. **Act through Olympus (how does it change the world?)**  
    - BFIS never pokes DCS directly; it always says to Olympus:
      - “Please run this command that you already know how to do.”  
-   - The “command adapter” part of BFIS:
-     - Translates each BFIS action into one of Olympus’ existing commands.
+   - The "command adapter" part of BFIS:
+     - Translates each BFIS action into one of Olympus' existing commands.
      - Sends them.
-     - Watches for “did that command complete or fail?”.
+     - Watches for "did that command complete or fail?".
+     - Verifies command execution by checking Olympus logs: After sending a command (e.g., "spawn 2 F-16s"), BFIS polls the `/olympus/logs` endpoint and looks for matching log entries (e.g., "Game master spawned a blue F-16"). If the matching log appears, the command succeeded; if not within a timeout, it's treated as failed. This provides built-in feedback without requiring separate command status endpoints.
    - For MVP, this is a small, explicit set of supported actions:
      - Example: a short list like SPAWN, MOVE, ATTACK, RTB, maybe one scenario‑building action.
 

@@ -35,6 +35,19 @@ function safeId(obj: any): string | undefined {
 }
 
 /**
+ * Normalize coalition string to OlympusCoalition type.
+ * Handles lowercase/uppercase variations from Olympus.
+ */
+function normalizeCoalition(coalition: unknown): OlympusCoalition {
+  if (typeof coalition !== "string") return "UNKNOWN";
+  const normalized = coalition.toUpperCase();
+  if (normalized === "BLUE" || normalized === "RED" || normalized === "NEUTRAL") {
+    return normalized as OlympusCoalition;
+  }
+  return "UNKNOWN";
+}
+
+/**
  * Sort helper for normalized entities.
  */
 function sortById<T extends { id: string }>(a: T, b: T): number {
@@ -44,46 +57,68 @@ function sortById<T extends { id: string }>(a: T, b: T): number {
 /**
  * Normalize airbase data from Olympus response.
  * 
- * @param raw - Raw JSON response from /olympus/airbases (expected { airbases: [...] })
+ * @param raw - Raw JSON response from /olympus/airbases
+ *   Format: { airbases: { "1": { callsign, coalition, latitude, longitude }, ... } }
  * @param logger - Optional logger for warnings
  * @returns Sorted array of NormalizedAirbase
  */
 export function normalizeAirbases(raw: unknown, logger?: StructuredLogger): NormalizedAirbase[] {
   if (!raw || typeof raw !== "object") return [];
   
-  const container = raw as { airbases?: unknown[] };
-  if (!Array.isArray(container.airbases)) return [];
+  const container = raw as { airbases?: unknown };
+  if (!container.airbases || typeof container.airbases !== "object") return [];
 
   const result: NormalizedAirbase[] = [];
+  const airbasesObj = container.airbases as Record<string, any>;
 
-  for (const item of container.airbases) {
-    if (!item || typeof item !== "object") continue;
-    
-    const id = safeId(item);
-    
-    // Critical field check
-    if (!id) {
-      if (logger) {
-        logger.warn("bfis-normalization-missing-id", {
-          entity: "airbase",
-          rawItem: item as Record<string, unknown>
-        });
+  // Handle both array and object formats
+  if (Array.isArray(airbasesObj)) {
+    // Array format (if Olympus ever changes)
+    for (const item of airbasesObj) {
+      if (!item || typeof item !== "object") continue;
+      
+      const id = safeId(item);
+      
+      if (!id) {
+        if (logger) {
+          logger.warn("bfis-normalization-missing-id", {
+            entity: "airbase",
+            rawItem: item as Record<string, unknown>
+          });
+        }
+        continue;
       }
-      continue;
-    }
 
-    const rawItem = item as any;
-    
-    result.push({
-      id,
-      name: typeof rawItem.callsign === "string" ? rawItem.callsign : undefined,
-      coalition: rawItem.coalition as OlympusCoalition,
-      position: rawItem.lat && rawItem.lon ? {
-        lat: Number(rawItem.lat),
-        lon: Number(rawItem.lon),
-        altMeters: Number(rawItem.alt || 0)
-      } : undefined
-    });
+      result.push({
+        id,
+        name: typeof item.callsign === "string" ? item.callsign : undefined,
+        coalition: normalizeCoalition(item.coalition),
+        position: item.latitude && item.longitude ? {
+          lat: Number(item.latitude),
+          lon: Number(item.longitude),
+          altMeters: Number(item.alt || 0)
+        } : undefined
+      });
+    }
+  } else {
+    // Object format (keyed by ID) - current Olympus format
+    for (const [key, item] of Object.entries(airbasesObj)) {
+      if (!item || typeof item !== "object") continue;
+      
+      // Use the key as ID if item doesn't have an id field
+      const id = safeId(item) || key;
+      
+      result.push({
+        id,
+        name: typeof item.callsign === "string" ? item.callsign : undefined,
+        coalition: normalizeCoalition(item.coalition),
+        position: item.latitude && item.longitude ? {
+          lat: Number(item.latitude),
+          lon: Number(item.longitude),
+          altMeters: Number(item.alt || 0)
+        } : undefined
+      });
+    }
   }
 
   return result.sort(sortById);
@@ -132,44 +167,98 @@ export function normalizeBullseyes(raw: unknown): NormalizedBullseye[] {
  * Normalize spot data from Olympus response.
  * 
  * @param raw - Raw JSON response from /olympus/spots
+ *   Format: { spots: { "id": { type, targetPosition: { lat, lng }, code, sourceUnitID, active }, ... } }
  * @param logger - Optional logger for warnings
  * @returns Sorted array of NormalizedSpot
  */
 export function normalizeSpots(raw: unknown, logger?: StructuredLogger): NormalizedSpot[] {
   if (!raw || typeof raw !== "object") return [];
   
-  const container = raw as { spots?: unknown[] };
-  if (!Array.isArray(container.spots)) return [];
+  const container = raw as { spots?: unknown };
+  if (!container.spots || typeof container.spots !== "object") return [];
 
   const result: NormalizedSpot[] = [];
+  const spotsObj = container.spots as Record<string, any>;
 
-  for (const item of container.spots) {
-    if (!item || typeof item !== "object") continue;
-    
-    // Spots often don't have stable IDs from DCS, usually just index
-    // We try to find an ID, or skip if totally unidentifiable
-    const rawItem = item as any;
-    const id = safeId(rawItem) || rawItem.code; // Fallback to laser code if present
+  // Handle both array and object formats
+  if (Array.isArray(spotsObj)) {
+    // Array format (if Olympus ever changes)
+    for (const item of spotsObj) {
+      if (!item || typeof item !== "object") continue;
+      
+      const rawItem = item as any;
+      const id = safeId(rawItem) || rawItem.code;
 
-    if (!id) {
-      if (logger) {
-        logger.warn("bfis-normalization-missing-id", {
-          entity: "spot",
-          rawItem: item as Record<string, unknown>
-        });
+      if (!id) {
+        if (logger) {
+          logger.warn("bfis-normalization-missing-id", {
+            entity: "spot",
+            rawItem: item as Record<string, unknown>
+          });
+        }
+        continue;
       }
-      continue;
-    }
 
-    result.push({
-      id: String(id),
-      type: "laser", // Default for now, could infer from fields
-      position: rawItem.lat && rawItem.lon ? {
-        lat: Number(rawItem.lat),
-        lon: Number(rawItem.lon),
-        altMeters: Number(rawItem.alt || 0)
-      } : undefined
-    });
+      // Extract position from targetPosition or direct lat/lon
+      const position = rawItem.targetPosition 
+        ? {
+            lat: Number(rawItem.targetPosition.lat || rawItem.targetPosition.latitude),
+            lon: Number(rawItem.targetPosition.lng || rawItem.targetPosition.lon || rawItem.targetPosition.longitude),
+            altMeters: Number(rawItem.targetPosition.alt || rawItem.targetPosition.altMeters || 0)
+          }
+        : (rawItem.lat && rawItem.lon ? {
+            lat: Number(rawItem.lat),
+            lon: Number(rawItem.lon),
+            altMeters: Number(rawItem.alt || 0)
+          } : undefined);
+
+      result.push({
+        id: String(id),
+        type: typeof rawItem.type === "string" ? rawItem.type : "laser",
+        position
+      });
+    }
+  } else {
+    // Object format (keyed by ID) - current Olympus format
+    for (const [key, item] of Object.entries(spotsObj)) {
+      if (!item || typeof item !== "object") continue;
+      
+      const rawItem = item as any;
+      
+      // Use the key as ID (most stable), or try to find id/code in the data
+      // Key is the spot ID from Olympus, which is more stable than code
+      const id = safeId(rawItem) || key || rawItem.code;
+
+      if (!id) {
+        if (logger) {
+          logger.warn("bfis-normalization-missing-id", {
+            entity: "spot",
+            rawItem: item as Record<string, unknown>
+          });
+        }
+        continue;
+      }
+
+      // Extract position from targetPosition (Olympus format)
+      // Format: targetPosition: { lat, lng } or direct lat/lon
+      const position = rawItem.targetPosition 
+        ? {
+            lat: Number(rawItem.targetPosition.lat || rawItem.targetPosition.latitude),
+            lon: Number(rawItem.targetPosition.lng || rawItem.targetPosition.lon || rawItem.targetPosition.longitude),
+            altMeters: Number(rawItem.targetPosition.alt || rawItem.targetPosition.altMeters || 0)
+          }
+        : (rawItem.lat && rawItem.lon ? {
+            lat: Number(rawItem.lat),
+            lon: Number(rawItem.lon),
+            altMeters: Number(rawItem.alt || 0)
+          } : undefined);
+
+      result.push({
+        id: String(id),
+        type: typeof rawItem.type === "string" ? rawItem.type : "laser",
+        position
+      });
+    }
   }
 
   return result.sort(sortById);
@@ -179,44 +268,88 @@ export function normalizeSpots(raw: unknown, logger?: StructuredLogger): Normali
  * Normalize drawing data from Olympus response.
  * 
  * @param raw - Raw JSON response from /olympus/drawings
+ *   Format: { drawings: { layerName: { coalition: { id: {...}, ... } } } }
  * @param logger - Optional logger for warnings
  * @returns Sorted array of NormalizedDrawing
+ * 
+ * @defect DRAWINGS-001: Drawings not being captured from Olympus API
+ *   - Status: OPEN
+ *   - Date: 2025-11-19
+ *   - Description: The /olympus/drawings endpoint consistently returns empty objects
+ *     for all drawing layers (navpoints.blue, navpoints.neutral, navpoints.red).
+ *     The normalizer function is working correctly and will process drawings when
+ *     they appear in the API response. Root cause appears to be MIST (Mission
+ *     Scripting Tools) not detecting drawings in the DCS mission, or drawings
+ *     not being created/saved in a format MIST recognizes.
+ *   - Verification: All test runs show drawingCount: 0. API returns 200 OK but
+ *     with empty objects. Normalizer tested and confirmed working with test data.
+ *   - Related: Olympus Lua code in scripts/lua/backend/OlympusCommand.lua
+ *     function Olympus.initializeDrawings() depends on mist.DBs.drawingByName
  */
 export function normalizeDrawings(raw: unknown, logger?: StructuredLogger): NormalizedDrawing[] {
   if (!raw || typeof raw !== "object") return [];
   
-  const container = raw as { drawings?: unknown[] };
-  if (!Array.isArray(container.drawings)) return [];
+  const container = raw as { drawings?: unknown };
+  if (!container.drawings || typeof container.drawings !== "object") return [];
 
   const result: NormalizedDrawing[] = [];
+  const drawingsObj = container.drawings as Record<string, any>;
 
-  for (const item of container.drawings) {
-    if (!item || typeof item !== "object") continue;
+  // Traverse nested structure: drawings -> layers -> (coalitions/customLayers) -> (optional customLayer) -> entries
+  // Olympus structure can be:
+  // - drawings[layerName][drawingName] = drawingData (direct)
+  // - drawings[layerName][coalition][drawingName] = drawingData (with coalition)
+  // - drawings[layerName][coalition][customLayer][drawingName] = drawingData (navpoints with customLayer)
+  function extractDrawingsFromValue(value: any, path: string = ""): void {
+    if (!value || typeof value !== "object") return;
     
-    const rawItem = item as any;
-    // Drawings use 'name' as ID often, or 'id'
-    const id = safeId(rawItem) || rawItem.name;
-
-    if (!id) {
-      if (logger) {
-        logger.warn("bfis-normalization-missing-id", {
-          entity: "drawing",
-          rawItem: item as Record<string, unknown>
+    const entries = Object.entries(value);
+    if (entries.length === 0) return;
+    
+    // Check if entries are drawings (have geometry fields) or are intermediate levels
+    for (const [key, item] of entries) {
+      if (!item || typeof item !== "object") continue;
+      
+      // Check if this is a drawing (has drawing fields)
+      const isDrawing = 'lat' in item || 'lng' in item || 'points' in item || 
+                        'text' in item || 'name' in item || 'mapX' in item || 'mapY' in item ||
+                        'layerName' in item || 'callsignStr' in item || 'x' in item || 'y' in item;
+      
+      if (isDrawing) {
+        // This is a drawing
+        const rawItem = item as any;
+        const id = safeId(rawItem) || rawItem.name || rawItem.callsignStr || key;
+        
+        if (!id) {
+          if (logger) {
+            logger.warn("bfis-normalization-missing-id", {
+              entity: "drawing",
+              rawItem: item as Record<string, unknown>
+            });
+          }
+          continue;
+        }
+        
+        const { lat, lon, lng, points, radius, text, name, mapX, mapY, x, y, callsignStr } = rawItem;
+        const geometry = { lat, lon, lng, points, radius, mapX, mapY, x, y };
+        
+        result.push({
+          id: String(id),
+          label: typeof text === "string" ? text : 
+                (typeof name === "string" ? name : 
+                 (typeof callsignStr === "string" ? callsignStr : undefined)),
+          geometry
         });
+      } else {
+        // This is an intermediate level (coalition, customLayer, etc.) - recurse
+        extractDrawingsFromValue(item, path ? `${path}.${key}` : key);
       }
-      continue;
     }
-
-    // Extract geometry safely (could be point, line, poly)
-    // We preserve raw structure for geometry as it varies
-    const { lat, lon, points, radius } = rawItem;
-    const geometry = { lat, lon, points, radius };
-
-    result.push({
-      id: String(id),
-      label: typeof rawItem.text === "string" ? rawItem.text : rawItem.name,
-      geometry
-    });
+  }
+  
+  for (const [layerName, layerData] of Object.entries(drawingsObj)) {
+    if (!layerData || typeof layerData !== "object") continue;
+    extractDrawingsFromValue(layerData, layerName);
   }
 
   return result.sort(sortById);
@@ -226,35 +359,54 @@ export function normalizeDrawings(raw: unknown, logger?: StructuredLogger): Norm
  * Normalize log entries from Olympus response.
  * 
  * @param raw - Raw JSON response from /olympus/logs
+ *   Format: { logs: { timestamp: "message", ... } } (object keyed by timestamp)
+ *   or { logs: [...] } (array format, if Olympus changes)
  * @returns Sorted array of NormalizedLogEntry
  */
 export function normalizeLogs(raw: unknown): NormalizedLogEntry[] {
   if (!raw || typeof raw !== "object") return [];
   
-  const container = raw as { logs?: unknown[] };
-  if (!Array.isArray(container.logs)) return [];
+  const container = raw as { logs?: unknown };
+  if (!container.logs || typeof container.logs !== "object") return [];
 
   const result: NormalizedLogEntry[] = [];
+  const logsObj = container.logs as Record<string, any>;
 
-  for (const item of container.logs) {
-    if (!item || typeof item !== "object") continue;
-    
-    const rawItem = item as any;
-    
-    // Logs often lack IDs. We generate one if missing to ensure stability.
-    // Using randomUUID here is acceptable as logs are transient in context,
-    // but deterministic hash would be better if we had stable input.
-    // For MVP, we accept that re-fetching same logs might generate new IDs
-    // (though logs are usually fetched incrementally).
-    const id = safeId(rawItem) || randomUUID();
+  // Handle both array and object formats
+  if (Array.isArray(logsObj)) {
+    // Array format (if Olympus ever changes)
+    for (const item of logsObj) {
+      if (!item || typeof item !== "object") continue;
+      
+      const rawItem = item as any;
+      const id = safeId(rawItem) || randomUUID();
 
-    result.push({
-      id: String(id),
-      timestamp: Number(rawItem.time || Date.now()),
-      category: typeof rawItem.type === "string" ? rawItem.type : "info",
-      message: typeof rawItem.message === "string" ? rawItem.message : JSON.stringify(rawItem),
-      fields: rawItem.data // Preserve raw data fields
-    });
+      result.push({
+        id: String(id),
+        timestamp: Number(rawItem.time || Date.now()),
+        category: typeof rawItem.type === "string" ? rawItem.type : "info",
+        message: typeof rawItem.message === "string" ? rawItem.message : JSON.stringify(rawItem),
+        fields: rawItem.data
+      });
+    }
+  } else {
+    // Object format (keyed by timestamp) - current Olympus format
+    // Format: { "timestamp": "message", ... }
+    for (const [timestampStr, message] of Object.entries(logsObj)) {
+      const timestamp = Number(timestampStr);
+      if (isNaN(timestamp)) continue;
+      
+      const id = `log-${timestampStr}`;
+      const messageStr = typeof message === "string" ? message : JSON.stringify(message);
+
+      result.push({
+        id,
+        timestamp,
+        category: "info", // Default category, Olympus doesn't provide type in object format
+        message: messageStr,
+        fields: undefined
+      });
+    }
   }
 
   return result.sort(sortById);
