@@ -2,7 +2,8 @@
 
 **Feature Branch**: `002-context-snapshot`  
 **Created**: 2025-11-17  
-**Status**: Draft  
+**Completed**: 2025-11-19  
+**Status**: Complete  
 **Input**: User description: "Extend BFIS' 'see the battlefield' capability from just mission + units to a richer, unified snapshot that also carries Olympus' context data (airbases, bullseyes, spots, drawings, logs, and basic weapons state) as a single, consumable picture — without yet making decisions or inferring hostilities."
 
 ## Clarifications

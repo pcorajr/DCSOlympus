@@ -15,17 +15,15 @@ Think of BFIS as a loop that keeps doing five things:
    - BFIS turns this into a single, clean “snapshot” object: “At time T, here is the world as Olympus sees it.”
 
    **Implementation & MVP sub-stories**  
-   - _MVP Implementation status:_ Snapshot ingestion + binary unit decoding and basic snapshot construction are implemented as part of spec 001 (see `shared-schemas/OlympusSnapshot` and `bfis-service/src/snapshot/SnapshotReader` & decoders). Context endpoints are fetched but not yet surfaced in a unified snapshot model.
-   - **S1 – Raw picture (PARTIAL via spec 001):** BFIS can pull the current situation for mission metadata and units and assemble a faithful, low-level picture of what exists right now for those pieces. Incorporating full “context” (airbases, bullseyes, spots, drawings, logs, basic weapons state) into a single, consumable picture is still TODO.
+   - _MVP Implementation status:_ Snapshot ingestion + binary unit decoding and basic snapshot construction are implemented as part of spec 001 (see `shared-schemas/OlympusSnapshot` and `bfis-service/src/snapshot/SnapshotReader` & decoders). Context endpoints (airbases, bullseyes, spots, drawings, logs, weapons) are fetched, normalized, and surfaced in a unified `BfisContextSnapshot` model as part of spec 002 (see `bfis-service/src/context/`).
+   - **S1 – Raw picture (COMPLETE via spec 001 & 002):** BFIS can pull the current situation for mission metadata, units, and full context (airbases, bullseyes, spots, drawings, logs, basic weapons state) and assemble a faithful, unified picture of what exists right now. All context data is normalized and available in a single `BfisContextSnapshot` object.
    - **S2 – Simple summaries:** BFIS can describe the situation in human terms (“Blue has more aircraft in the north, Red holds most ground units around town X”) without yet suggesting actions.
    - **S3 – Noticing gaps and spikes:** BFIS can point out obvious holes or spikes in the picture (“no CAP over zone Y”, “unusually large Red push here”) so the human doesn’t have to hunt for them.
    - **S4 – Lightweight history:** BFIS can compare the current picture to recent snapshots and say what changed (“two new Red groups appeared here”, “this Blue flight disappeared”), still focused on understanding, not deciding actions.
 
    **Planned specs under this Epic**  
    - **Spec 001 – Snapshot ingestion & unit decoding (DONE):** Establish mission + units snapshot pipeline (already implemented, see above).
-   - **Spec 002 – Context snapshot (PLANNED):**
-     - Goal: extend “see the battlefield” from just mission + units to also include context: airbases, bullseyes, spots, drawings, and logs.
-     - Shape: Focus on a richer picture and a clean way to surface that context alongside units in a single snapshot view. We need to make sure that we capture as much data as olympus give us. So that we can use it for decision making. We also need to make sure we start defining how we are going to present the data to the llm. What does that entails? these are modules in the bfis-service to keep things fast and clean. This needs to start shaping into a structured snapshots that are easy to use for the llm but deliver enough data to the llm to make decisions.
+   - **Spec 002 – Context snapshot (DONE):** Extended "see the battlefield" from just mission + units to include full context: airbases, bullseyes, spots, drawings, logs, and weapons summary. All context data is normalized into stable, typed structures and assembled into a unified `BfisContextSnapshot` object. Implementation includes graceful error handling for partial failures, session consistency management, and deterministic normalization. All 20 functional requirements and 7 success criteria met. Known issue: DRAWINGS-001 (drawings not detected by MIST, documented in code).
    - **Spec 003 – Minimal weapons / hostility awareness (PLANNED):**
      - Goal: use weapons data plus logs (and other cheap signals) to answer two questions:
        - “Is the player (or player coalition) being attacked right now?”
