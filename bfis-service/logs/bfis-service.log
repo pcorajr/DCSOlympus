@@ -7983,3 +7983,88 @@
 {"ts":"2025-11-19T02:55:52.815Z","level":"warn","event":"bfis-unit-decode-unknown-datum-index","datumIndex":232,"unitId":1435313325,"recovery":"searching-for-end-of-data-marker"}
 {"ts":"2025-11-19T02:55:52.822Z","level":"warn","event":"bfis-snapshot-empty-data","endpoint":"logs","message":"Empty logs array received"}
 {"ts":"2025-11-19T02:55:52.855Z","level":"info","event":"bfis-snapshot-read-ok","snapshotId":"247b829a-ebb7-4fb2-bfb4-138f47560d75","sessionHash":"wXwFIkMvUoWzlJ4m","unitCount":125,"newUnitsInPoll":6,"cachedUnitsTotal":125,"unitsBufferSize":243,"weaponsBufferSize":8}
+{"ts":"2025-11-19T03:26:58.264Z","level":"info","event":"bfis-binary-fetch","endpoint":"units","mode":"incremental","bytes":251,"lastTime":1763522817530}
+{"ts":"2025-11-19T03:26:58.276Z","level":"info","event":"bfis-binary-fetch","endpoint":"weapons","mode":"incremental","bytes":8,"lastTime":1763522817538}
+{"ts":"2025-11-19T03:26:58.276Z","level":"warn","event":"bfis-snapshot-empty-data","endpoint":"weapons","bufferSize":8,"message":"Empty or minimal weapons data received"}
+{"ts":"2025-11-19T03:26:58.286Z","level":"warn","event":"bfis-snapshot-empty-data","endpoint":"logs","message":"Empty logs array received"}
+{"ts":"2025-11-19T03:26:58.311Z","level":"info","event":"bfis-snapshot-read-ok","snapshotId":"c33384f6-f53f-465d-ba0a-3d8d0adc2996","sessionHash":"wXwFIkMvUoWzlJ4m","unitCount":91,"newUnitsInPoll":1,"cachedUnitsTotal":91,"unitsBufferSize":251,"weaponsBufferSize":8}
+{"ts":"2025-11-19T03:26:59.268Z","level":"info","event":"bfis-binary-fetch","endpoint":"units","mode":"incremental","bytes":243,"lastTime":1763522818502}
+{"ts":"2025-11-19T03:26:59.276Z","level":"info","event":"bfis-binary-fetch","endpoint":"weapons","mode":"incremental","bytes":8,"lastTime":1763522818511}
+{"ts":"2025-11-19T03:26:59.275Z","level":"warn","event":"bfis-snapshot-empty-data","endpoint":"weapons","bufferSize":8,"message":"Empty or minimal weapons data received"}
+{"ts":"2025-11-19T03:26:59.284Z","level":"warn","event":"bfis-snapshot-empty-data","endpoint":"logs","message":"Empty logs array received"}
+{"ts":"2025-11-19T03:26:59.329Z","level":"info","event":"bfis-snapshot-read-ok","snapshotId":"a2ccc03a-994c-4542-aca6-7a22900d5759","sessionHash":"wXwFIkMvUoWzlJ4m","unitCount":91,"newUnitsInPoll":1,"cachedUnitsTotal":91,"unitsBufferSize":243,"weaponsBufferSize":8}
+{"ts":"2025-11-19T03:27:00.273Z","level":"info","event":"bfis-binary-fetch","endpoint":"units","mode":"incremental","bytes":243,"lastTime":1763522819505}
+{"ts":"2025-11-19T03:27:00.282Z","level":"warn","event":"bfis-snapshot-empty-data","endpoint":"weapons","bufferSize":8,"message":"Empty or minimal weapons data received"}
+{"ts":"2025-11-19T03:27:00.282Z","level":"info","event":"bfis-binary-fetch","endpoint":"weapons","mode":"incremental","bytes":8,"lastTime":1763522819514}
+{"ts":"2025-11-19T03:27:00.290Z","level":"warn","event":"bfis-snapshot-empty-data","endpoint":"logs","message":"Empty logs array received"}
+{"ts":"2025-11-19T03:27:00.321Z","level":"info","event":"bfis-snapshot-read-ok","snapshotId":"1a38aca9-87a9-434f-a809-86f7b57b7f34","sessionHash":"wXwFIkMvUoWzlJ4m","unitCount":91,"newUnitsInPoll":1,"cachedUnitsTotal":91,"unitsBufferSize":243,"weaponsBufferSize":8}
+{"ts":"2025-11-19T03:27:01.270Z","level":"info","event":"bfis-binary-fetch","endpoint":"units","mode":"incremental","bytes":243,"lastTime":1763522820509}
+{"ts":"2025-11-19T03:27:01.283Z","level":"warn","event":"bfis-snapshot-empty-data","endpoint":"weapons","bufferSize":8,"message":"Empty or minimal weapons data received"}
+{"ts":"2025-11-19T03:27:01.283Z","level":"info","event":"bfis-binary-fetch","endpoint":"weapons","mode":"incremental","bytes":8,"lastTime":1763522820519}
+{"ts":"2025-11-19T03:27:01.300Z","level":"warn","event":"bfis-snapshot-empty-data","endpoint":"logs","message":"Empty logs array received"}
+{"ts":"2025-11-19T03:27:01.332Z","level":"info","event":"bfis-snapshot-read-ok","snapshotId":"a243ebd1-1bb7-40d2-bd7c-44d67d6f85c7","sessionHash":"wXwFIkMvUoWzlJ4m","unitCount":91,"newUnitsInPoll":1,"cachedUnitsTotal":91,"unitsBufferSize":243,"weaponsBufferSize":8}
+{"ts":"2025-11-19T03:27:02.278Z","level":"info","event":"bfis-binary-fetch","endpoint":"units","mode":"incremental","bytes":243,"lastTime":1763522821507}
+{"ts":"2025-11-19T03:27:02.286Z","level":"warn","event":"bfis-snapshot-empty-data","endpoint":"weapons","bufferSize":8,"message":"Empty or minimal weapons data received"}
+{"ts":"2025-11-19T03:27:02.286Z","level":"info","event":"bfis-binary-fetch","endpoint":"weapons","mode":"incremental","bytes":8,"lastTime":1763522821519}
+{"ts":"2025-11-19T03:27:02.295Z","level":"warn","event":"bfis-snapshot-empty-data","endpoint":"logs","message":"Empty logs array received"}
+{"ts":"2025-11-19T03:27:02.332Z","level":"info","event":"bfis-snapshot-read-ok","snapshotId":"04a53eb9-fcb9-42ce-91af-4df888e5983b","sessionHash":"wXwFIkMvUoWzlJ4m","unitCount":91,"newUnitsInPoll":1,"cachedUnitsTotal":91,"unitsBufferSize":243,"weaponsBufferSize":8}
+{"ts":"2025-11-19T03:27:03.273Z","level":"info","event":"bfis-binary-fetch","endpoint":"units","mode":"incremental","bytes":251,"lastTime":1763522822511}
+{"ts":"2025-11-19T03:27:03.280Z","level":"warn","event":"bfis-snapshot-empty-data","endpoint":"weapons","bufferSize":8,"message":"Empty or minimal weapons data received"}
+{"ts":"2025-11-19T03:27:03.280Z","level":"info","event":"bfis-binary-fetch","endpoint":"weapons","mode":"incremental","bytes":8,"lastTime":1763522822524}
+{"ts":"2025-11-19T03:27:03.289Z","level":"warn","event":"bfis-snapshot-empty-data","endpoint":"logs","message":"Empty logs array received"}
+{"ts":"2025-11-19T03:27:03.326Z","level":"info","event":"bfis-snapshot-read-ok","snapshotId":"4d4b4024-b5a8-4373-bbf3-149a5fcd30de","sessionHash":"wXwFIkMvUoWzlJ4m","unitCount":91,"newUnitsInPoll":1,"cachedUnitsTotal":91,"unitsBufferSize":251,"weaponsBufferSize":8}
+{"ts":"2025-11-19T03:27:04.276Z","level":"info","event":"bfis-binary-fetch","endpoint":"units","mode":"incremental","bytes":243,"lastTime":1763522823511}
+{"ts":"2025-11-19T03:27:04.286Z","level":"info","event":"bfis-binary-fetch","endpoint":"weapons","mode":"incremental","bytes":8,"lastTime":1763522823518}
+{"ts":"2025-11-19T03:27:04.286Z","level":"warn","event":"bfis-snapshot-empty-data","endpoint":"weapons","bufferSize":8,"message":"Empty or minimal weapons data received"}
+{"ts":"2025-11-19T03:27:04.295Z","level":"warn","event":"bfis-snapshot-empty-data","endpoint":"logs","message":"Empty logs array received"}
+{"ts":"2025-11-19T03:27:04.334Z","level":"info","event":"bfis-snapshot-read-ok","snapshotId":"482fe036-9743-4d2f-9745-09aaa6ae54b2","sessionHash":"wXwFIkMvUoWzlJ4m","unitCount":91,"newUnitsInPoll":1,"cachedUnitsTotal":91,"unitsBufferSize":243,"weaponsBufferSize":8}
+{"ts":"2025-11-19T03:27:05.276Z","level":"info","event":"bfis-binary-fetch","endpoint":"units","mode":"incremental","bytes":246,"lastTime":1763522824513}
+{"ts":"2025-11-19T03:27:05.284Z","level":"info","event":"bfis-binary-fetch","endpoint":"weapons","mode":"incremental","bytes":8,"lastTime":1763522824524}
+{"ts":"2025-11-19T03:27:05.284Z","level":"warn","event":"bfis-snapshot-empty-data","endpoint":"weapons","bufferSize":8,"message":"Empty or minimal weapons data received"}
+{"ts":"2025-11-19T03:27:05.296Z","level":"warn","event":"bfis-snapshot-empty-data","endpoint":"logs","message":"Empty logs array received"}
+{"ts":"2025-11-19T03:27:05.327Z","level":"info","event":"bfis-snapshot-read-ok","snapshotId":"54f4077c-4e6b-4544-9e95-cf334cd88f11","sessionHash":"wXwFIkMvUoWzlJ4m","unitCount":91,"newUnitsInPoll":1,"cachedUnitsTotal":91,"unitsBufferSize":246,"weaponsBufferSize":8}
+{"ts":"2025-11-19T03:27:06.282Z","level":"info","event":"bfis-binary-fetch","endpoint":"units","mode":"incremental","bytes":243,"lastTime":1763522825514}
+{"ts":"2025-11-19T03:27:06.291Z","level":"warn","event":"bfis-snapshot-empty-data","endpoint":"weapons","bufferSize":8,"message":"Empty or minimal weapons data received"}
+{"ts":"2025-11-19T03:27:06.291Z","level":"info","event":"bfis-binary-fetch","endpoint":"weapons","mode":"incremental","bytes":8,"lastTime":1763522825522}
+{"ts":"2025-11-19T03:27:06.301Z","level":"warn","event":"bfis-snapshot-empty-data","endpoint":"logs","message":"Empty logs array received"}
+{"ts":"2025-11-19T03:27:06.342Z","level":"info","event":"bfis-snapshot-read-ok","snapshotId":"d740e2c4-6bc5-430c-9924-2a9c9d66ecc7","sessionHash":"wXwFIkMvUoWzlJ4m","unitCount":91,"newUnitsInPoll":1,"cachedUnitsTotal":91,"unitsBufferSize":243,"weaponsBufferSize":8}
+{"ts":"2025-11-19T03:27:07.275Z","level":"info","event":"bfis-binary-fetch","endpoint":"units","mode":"incremental","bytes":243,"lastTime":1763522826519}
+{"ts":"2025-11-19T03:27:07.283Z","level":"warn","event":"bfis-snapshot-empty-data","endpoint":"weapons","bufferSize":8,"message":"Empty or minimal weapons data received"}
+{"ts":"2025-11-19T03:27:07.283Z","level":"info","event":"bfis-binary-fetch","endpoint":"weapons","mode":"incremental","bytes":8,"lastTime":1763522826528}
+{"ts":"2025-11-19T03:27:07.284Z","level":"warn","event":"bfis-unit-decode-unknown-datum-index","datumIndex":191,"unitId":16777473,"recovery":"searching-for-end-of-data-marker"}
+{"ts":"2025-11-19T03:27:07.284Z","level":"warn","event":"bfis-unit-decode-unknown-datum-index","datumIndex":124,"unitId":1145673155,"recovery":"searching-for-end-of-data-marker"}
+{"ts":"2025-11-19T03:27:07.284Z","level":"warn","event":"bfis-unit-decode-unknown-datum-index","datumIndex":191,"unitId":16777985,"recovery":"searching-for-end-of-data-marker"}
+{"ts":"2025-11-19T03:27:07.284Z","level":"warn","event":"bfis-unit-decode-unknown-datum-index","datumIndex":191,"unitId":16778241,"recovery":"searching-for-end-of-data-marker"}
+{"ts":"2025-11-19T03:27:07.293Z","level":"warn","event":"bfis-snapshot-empty-data","endpoint":"logs","message":"Empty logs array received"}
+{"ts":"2025-11-19T03:27:07.327Z","level":"info","event":"bfis-snapshot-read-ok","snapshotId":"35e9aa9d-155b-47e5-9a27-fb7a565630a7","sessionHash":"wXwFIkMvUoWzlJ4m","unitCount":92,"newUnitsInPoll":6,"cachedUnitsTotal":92,"unitsBufferSize":243,"weaponsBufferSize":8}
+{"ts":"2025-11-19T03:27:08.280Z","level":"info","event":"bfis-binary-fetch","endpoint":"units","mode":"incremental","bytes":243,"lastTime":1763522827513}
+{"ts":"2025-11-19T03:27:08.297Z","level":"info","event":"bfis-binary-fetch","endpoint":"weapons","mode":"incremental","bytes":8,"lastTime":1763522827521}
+{"ts":"2025-11-19T03:27:08.296Z","level":"warn","event":"bfis-snapshot-empty-data","endpoint":"weapons","bufferSize":8,"message":"Empty or minimal weapons data received"}
+{"ts":"2025-11-19T03:27:08.297Z","level":"warn","event":"bfis-unit-decode-unknown-datum-index","datumIndex":191,"unitId":16777473,"recovery":"searching-for-end-of-data-marker"}
+{"ts":"2025-11-19T03:27:08.297Z","level":"warn","event":"bfis-unit-decode-unknown-datum-index","datumIndex":192,"unitId":16777985,"recovery":"searching-for-end-of-data-marker"}
+{"ts":"2025-11-19T03:27:08.297Z","level":"warn","event":"bfis-unit-decode-unknown-datum-index","datumIndex":191,"unitId":16778241,"recovery":"searching-for-end-of-data-marker"}
+{"ts":"2025-11-19T03:27:08.312Z","level":"warn","event":"bfis-snapshot-empty-data","endpoint":"logs","message":"Empty logs array received"}
+{"ts":"2025-11-19T03:27:08.356Z","level":"info","event":"bfis-snapshot-read-ok","snapshotId":"cf1ded03-d487-4568-8d31-f780d1fe6009","sessionHash":"wXwFIkMvUoWzlJ4m","unitCount":92,"newUnitsInPoll":5,"cachedUnitsTotal":92,"unitsBufferSize":243,"weaponsBufferSize":8}
+{"ts":"2025-11-19T03:27:09.278Z","level":"info","event":"bfis-binary-fetch","endpoint":"units","mode":"incremental","bytes":243,"lastTime":1763522828515}
+{"ts":"2025-11-19T03:27:09.286Z","level":"warn","event":"bfis-snapshot-empty-data","endpoint":"weapons","bufferSize":8,"message":"Empty or minimal weapons data received"}
+{"ts":"2025-11-19T03:27:09.287Z","level":"info","event":"bfis-binary-fetch","endpoint":"weapons","mode":"incremental","bytes":8,"lastTime":1763522828533}
+{"ts":"2025-11-19T03:27:09.287Z","level":"warn","event":"bfis-unit-decode-unknown-datum-index","datumIndex":191,"unitId":16777473,"recovery":"searching-for-end-of-data-marker"}
+{"ts":"2025-11-19T03:27:09.287Z","level":"warn","event":"bfis-unit-decode-unknown-datum-index","datumIndex":192,"unitId":16777985,"recovery":"searching-for-end-of-data-marker"}
+{"ts":"2025-11-19T03:27:09.296Z","level":"warn","event":"bfis-snapshot-empty-data","endpoint":"logs","message":"Empty logs array received"}
+{"ts":"2025-11-19T03:27:09.331Z","level":"info","event":"bfis-snapshot-read-ok","snapshotId":"1098b29c-2808-4882-9611-ed387894bee8","sessionHash":"wXwFIkMvUoWzlJ4m","unitCount":92,"newUnitsInPoll":4,"cachedUnitsTotal":92,"unitsBufferSize":243,"weaponsBufferSize":8}
+{"ts":"2025-11-19T03:27:10.280Z","level":"info","event":"bfis-binary-fetch","endpoint":"units","mode":"incremental","bytes":243,"lastTime":1763522829515}
+{"ts":"2025-11-19T03:27:10.289Z","level":"warn","event":"bfis-snapshot-empty-data","endpoint":"weapons","bufferSize":8,"message":"Empty or minimal weapons data received"}
+{"ts":"2025-11-19T03:27:10.289Z","level":"info","event":"bfis-binary-fetch","endpoint":"weapons","mode":"incremental","bytes":8,"lastTime":1763522829524}
+{"ts":"2025-11-19T03:27:10.289Z","level":"warn","event":"bfis-unit-decode-unknown-datum-index","datumIndex":191,"unitId":16777473,"recovery":"searching-for-end-of-data-marker"}
+{"ts":"2025-11-19T03:27:10.289Z","level":"warn","event":"bfis-unit-decode-unknown-datum-index","datumIndex":192,"unitId":16777985,"recovery":"searching-for-end-of-data-marker"}
+{"ts":"2025-11-19T03:27:10.289Z","level":"warn","event":"bfis-unit-decode-unknown-datum-index","datumIndex":191,"unitId":16778241,"recovery":"searching-for-end-of-data-marker"}
+{"ts":"2025-11-19T03:27:10.297Z","level":"warn","event":"bfis-snapshot-empty-data","endpoint":"logs","message":"Empty logs array received"}
+{"ts":"2025-11-19T03:27:10.328Z","level":"info","event":"bfis-snapshot-read-ok","snapshotId":"6b4a1b80-c92d-4708-b089-730cd2bec12d","sessionHash":"wXwFIkMvUoWzlJ4m","unitCount":92,"newUnitsInPoll":5,"cachedUnitsTotal":92,"unitsBufferSize":243,"weaponsBufferSize":8}
+{"ts":"2025-11-19T03:27:11.278Z","level":"info","event":"bfis-binary-fetch","endpoint":"units","mode":"incremental","bytes":243,"lastTime":1763522830517}
+{"ts":"2025-11-19T03:27:11.289Z","level":"warn","event":"bfis-snapshot-empty-data","endpoint":"weapons","bufferSize":8,"message":"Empty or minimal weapons data received"}
+{"ts":"2025-11-19T03:27:11.289Z","level":"info","event":"bfis-binary-fetch","endpoint":"weapons","mode":"incremental","bytes":8,"lastTime":1763522830526}
+{"ts":"2025-11-19T03:27:11.290Z","level":"warn","event":"bfis-unit-decode-unknown-datum-index","datumIndex":191,"unitId":16777473,"recovery":"searching-for-end-of-data-marker"}
+{"ts":"2025-11-19T03:27:11.290Z","level":"warn","event":"bfis-unit-decode-unknown-datum-index","datumIndex":192,"unitId":16777985,"recovery":"searching-for-end-of-data-marker"}
+{"ts":"2025-11-19T03:27:11.290Z","level":"warn","event":"bfis-unit-decode-field-error","datumIndex":63,"unitId":16778241,"error":"Offset is outside the bounds of the DataView","errorType":"RangeError"}
+{"ts":"2025-11-19T03:27:11.298Z","level":"warn","event":"bfis-snapshot-empty-data","endpoint":"logs","message":"Empty logs array received"}
+{"ts":"2025-11-19T03:27:11.329Z","level":"info","event":"bfis-snapshot-read-ok","snapshotId":"26d68c0b-d576-4ef0-acc3-db5c9685bf4a","sessionHash":"wXwFIkMvUoWzlJ4m","unitCount":93,"newUnitsInPoll":6,"cachedUnitsTotal":93,"unitsBufferSize":243,"weaponsBufferSize":8}
