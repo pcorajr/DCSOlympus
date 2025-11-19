@@ -1,0 +1,374 @@
+cd /home/dcs/DCSOlympus && timeout 30 docker run --rm --network host -v /home/dcs/.creds:/home/dcs/.creds:ro -v /home/dcs/DCSOlympus/bfis-service/logs:/app/bfis-service/logs bfis-service node -e "
+const { SnapshotReader } = require('./build/bfis-service/src/snapshot/snapshot-reader.js');
+const { loadConfig } = require('./build/bfis-service/src/config/config.js');
+const { createStructuredLogger } = require('./build/bfis-service/src/logger/structured-logger.js');
+
+(async () => {
+  const config = loadConfig();
+  const logger = createStructuredLogger(config.generalLogPath, config.logLevel);
+  const reader = new SnapshotReader(config, logger);
+  
+  console.log('═══════════════════════════════════════════════════════════════');
+  console.log('  BFIS COMMANDER BATTLE STATE REVIEW');
+  console.log('  Comprehensive End-to-End Data Capture');
+  console.log('  LARGE SCALE MISSION ANALYSIS');
+  console.log('═══════════════════════════════════════════════════════════════\n');
+  
+  const startTime = Date.now();
+  const snapshot = await reader.readContextOnce();
+  const duration = Date.now() - startTime;
+  
+  console.log('=== MISSION METADATA ===');
+  console.log(\`Mission: \${snapshot.base.missionId}\`);
+  console.log(\`Server: \${snapshot.base.serverId}\`);
+  console.log(\`Session: \${snapshot.base.sessionHash}\`);
+  console.log(\`Timestamp: \${new Date(snapshot.base.time).toISOString()}\`);
+  console.log(\`Snapshot ID: \${snapshot.base.snapshotId}\`);
+  console.log(\`Data Capture Duration: \${duration}ms\n\`);
+  
+  // Analyze Units
+  const unitAnalysis = {
+    total: snapshot.base.units.length,
+    byCoalition: {},
+    byType: {},
+    byCategory: {},
+    withPositions: 0,
+    airAssets: [],
+    groundAssets: [],
+    navalAssets: []
+  };
+  
+  snapshot.base.units.forEach(unit => {
+    const coalition = unit.coalition || 'UNKNOWN';
+    const type = unit.unitType || 'UNKNOWN';
+    const category = unit.category || 'UNKNOWN';
+    
+    unitAnalysis.byCoalition[coalition] = (unitAnalysis.byCoalition[coalition] || 0) + 1;
+    unitAnalysis.byType[type] = (unitAnalysis.byType[type] || 0) + 1;
+    unitAnalysis.byCategory[category] = (unitAnalysis.byCategory[category] || 0) + 1;
+    
+    if (unit.position && (unit.position.lat !== 0 || unit.position.lon !== 0)) {
+      unitAnalysis.withPositions++;
+    }
+    
+    if (category === 'Aircraft' || category === 'Helicopter') {
+      unitAnalysis.airAssets.push({ id: unit.unitId, type, name: unit.name, coalition, position: unit.position });
+    } else if (category === 'GroundUnit') {
+      unitAnalysis.groundAssets.push({ id: unit.unitId, type, name: unit.name, coalition, position: unit.position });
+    } else if (category === 'Ship') {
+      unitAnalysis.navalAssets.push({ id: unit.unitId, type, name: unit.name, coalition, position: unit.position });
+    }
+  });
+  
+  console.log('═══════════════════════════════════════════════════════════════');
+  console.log('  UNIT ANALYSIS');
+  console.log('═══════════════════════════════════════════════════════════════\n');
+  console.log(\`Total Units Tracked: \${unitAnalysis.total}\`);
+  console.log(\`Units with Valid Positions: \${unitAnalysis.withPositions}/\${unitAnalysis.total}\n\`);
+  
+  console.log('Coalition Distribution:');
+  Object.entries(unitAnalysis.byCoalition).sort((a, b) => b[1] - a[1]).forEach(([coal, count]) => {
+    const pct = ((count / unitAnalysis.total) * 100).toFixed(1);
+    console.log(\`  \${coal}: \${count} units (\${pct}%)\`);
+  });
+  console.log('');
+  
+  console.log('Unit Categories:');
+  Object.entries(unitAnalysis.byCategory).sort((a, b) => b[1] - a[1]).forEach(([cat, count]) => {
+    const pct = ((count / unitAnalysis.total) * 100).toFixed(1);
+    console.log(\`  \${cat}: \${count} (\${pct}%)\`);
+  });
+  console.log('');
+  
+  console.log('Top 20 Unit Types:');
+  Object.entries(unitAnalysis.byType).sort((a, b) => b[1] - a[1]).slice(0, 20).forEach(([type, count]) => {
+    console.log(\`  \${type}: \${count}\`);
+  });
+  if (Object.keys(unitAnalysis.byType).length > 20) {
+    console.log(\`  ... and \${Object.keys(unitAnalysis.byType).length - 20} more unit types\`);
+  }
+  console.log('');
+  
+  const blueAir = unitAnalysis.airAssets.filter(a => a.coalition === 'BLUE').length;
+  const redAir = unitAnalysis.airAssets.filter(a => a.coalition === 'RED').length;
+  const blueGround = unitAnalysis.groundAssets.filter(a => a.coalition === 'BLUE').length;
+  const redGround = unitAnalysis.groundAssets.filter(a => a.coalition === 'RED').length;
+  const blueNaval = unitAnalysis.navalAssets.filter(a => a.coalition === 'BLUE').length;
+  const redNaval = unitAnalysis.navalAssets.filter(a => a.coalition === 'RED').length;
+  
+  console.log(\`Air Assets: \${unitAnalysis.airAssets.length} total (BLUE: \${blueAir}, RED: \${redAir})\`);
+  console.log(\`Ground Assets: \${unitAnalysis.groundAssets.length} total (BLUE: \${blueGround}, RED: \${redGround})\`);
+  console.log(\`Naval Assets: \${unitAnalysis.navalAssets.length} total (BLUE: \${blueNaval}, RED: \${redNaval})\`);
+  console.log('');
+  
+  // Airbases
+  const airbaseAnalysis = { total: snapshot.airbases.length, byCoalition: {} };
+  snapshot.airbases.forEach(ab => {
+    const coalition = ab.coalition || 'NEUTRAL';
+    airbaseAnalysis.byCoalition[coalition] = (airbaseAnalysis.byCoalition[coalition] || 0) + 1;
+  });
+  
+  console.log('═══════════════════════════════════════════════════════════════');
+  console.log('  AIRBASE INFRASTRUCTURE');
+  console.log('═══════════════════════════════════════════════════════════════\n');
+  console.log(\`Total Airbases: \${airbaseAnalysis.total}\`);
+  Object.entries(airbaseAnalysis.byCoalition).sort().forEach(([coal, count]) => {
+    console.log(\`  \${coal}: \${count} airbases\`);
+  });
+  console.log('');
+  
+  // Bullseyes
+  console.log('═══════════════════════════════════════════════════════════════');
+  console.log('  BULLSEYE REFERENCE POINTS');
+  console.log('═══════════════════════════════════════════════════════════════\n');
+  console.log(\`Total Bullseyes: \${snapshot.bullseyes.length}\`);
+  snapshot.bullseyes.forEach(be => {
+    const pos = be.position ? \`lat=\${be.position.lat.toFixed(4)}, lon=\${be.position.lon.toFixed(4)}\` : 'No position';
+    console.log(\`  [\${be.coalition || 'UNKNOWN'}] \${be.id} - \${pos}\`);
+  });
+  console.log('');
+  
+  // Spots
+  console.log('═══════════════════════════════════════════════════════════════');
+  console.log('  ACTIVE SPOTS (LASER/IR)');
+  console.log('═══════════════════════════════════════════════════════════════\n');
+  console.log(\`Total Active Spots: \${snapshot.spots.length}\`);
+  if (snapshot.spots.length > 0) {
+    const spotTypes = {};
+    snapshot.spots.forEach(spot => {
+      const type = spot.type || 'unknown';
+      spotTypes[type] = (spotTypes[type] || 0) + 1;
+    });
+    Object.entries(spotTypes).forEach(([type, count]) => {
+      console.log(\`  \${type}: \${count}\`);
+    });
+  }
+  console.log('');
+  
+  // Logs
+  console.log('═══════════════════════════════════════════════════════════════');
+  console.log('  RECENT LOG ENTRIES');
+  console.log('═══════════════════════════════════════════════════════════════\n');
+  console.log(\`Total Log Entries: \${snapshot.logs.length}\`);
+  if (snapshot.logs.length > 0) {
+    const logCategories = {};
+    snapshot.logs.forEach(log => {
+      const cat = log.category || 'unknown';
+      logCategories[cat] = (logCategories[cat] || 0) + 1;
+    });
+    Object.entries(logCategories).forEach(([cat, count]) => {
+      console.log(\`  \${cat}: \${count}\`);
+    });
+    const sortedLogs = [...snapshot.logs].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+    console.log('\nMost Recent Logs (last 5):');
+    sortedLogs.slice(0, 5).forEach(log => {
+      const time = log.timestamp ? new Date(log.timestamp).toISOString() : 'Unknown time';
+      const msg = (log.message || 'No message').substring(0, 120);
+      console.log(\`  [\${time}] \${msg}\${(log.message || '').length > 120 ? '...' : ''}\`);
+    });
+  }
+  console.log('');
+  
+  // Weapons
+  console.log('═══════════════════════════════════════════════════════════════');
+  console.log('  WEAPONS STATE');
+  console.log('═══════════════════════════════════════════════════════════════\n');
+  console.log(\`Active Weapons Tracked: \${snapshot.weaponsSummary.activeCount}\`);
+  const lastUpdate = snapshot.weaponsSummary.lastUpdateTime > 0 
+    ? new Date(snapshot.weaponsSummary.lastUpdateTime).toISOString()
+    : 'Never';
+  console.log(\`Last Weapons Update: \${lastUpdate}\`);
+  console.log('');
+  
+  // COMMANDER REVIEW
+  console.log('═══════════════════════════════════════════════════════════════');
+  console.log('  COMMANDER BATTLE STATE REVIEW');
+  console.log('  LLM Commander Analysis - LARGE SCALE MISSION');
+  console.log('═══════════════════════════════════════════════════════════════\n');
+  
+  const blueUnits = unitAnalysis.byCoalition['BLUE'] || 0;
+  const redUnits = unitAnalysis.byCoalition['RED'] || 0;
+  const neutralUnits = unitAnalysis.byCoalition['NEUTRAL'] || 0;
+  const unknownUnits = unitAnalysis.byCoalition['UNKNOWN'] || 0;
+  
+  console.log('=== SITUATION ASSESSMENT ===\n');
+  console.log('FORCE COMPOSITION:');
+  console.log(\`  BLUE Forces: \${blueUnits} total units (\${blueAir} air, \${blueGround} ground, \${blueNaval} naval)\`);
+  console.log(\`  RED Forces: \${redUnits} total units (\${redAir} air, \${redGround} ground, \${redNaval} naval)\`);
+  if (neutralUnits > 0) console.log(\`  NEUTRAL Forces: \${neutralUnits} units\`);
+  if (unknownUnits > 0) console.log(\`  UNKNOWN Classification: \${unknownUnits} units (DATA QUALITY ISSUE)\`);
+  if (blueUnits > 0 && redUnits > 0) {
+    const forceRatio = (redUnits / blueUnits).toFixed(2);
+    console.log(\`  Force Ratio: \${forceRatio}:1 (RED:BLUE)\`);
+  }
+  console.log('');
+  
+  console.log('AIR SUPERIORITY:');
+  if (blueAir > 0 || redAir > 0) {
+    const airRatio = blueAir > 0 ? (redAir / blueAir).toFixed(2) : 'N/A';
+    console.log(\`  Air Asset Ratio: \${airRatio}:1 (RED:BLUE)\`);
+    if (blueAir > redAir * 1.5) {
+      console.log('  Assessment: BLUE maintains SIGNIFICANT air superiority');
+    } else if (blueAir > redAir) {
+      console.log('  Assessment: BLUE maintains air superiority');
+    } else if (redAir > blueAir * 1.5) {
+      console.log('  Assessment: RED maintains SIGNIFICANT air superiority');
+    } else if (redAir > blueAir) {
+      console.log('  Assessment: RED maintains air superiority');
+    } else {
+      console.log('  Assessment: Air parity - contested airspace');
+    }
+  } else {
+    console.log('  Assessment: No air assets currently active');
+  }
+  console.log('');
+  
+  console.log('GROUND FORCES:');
+  if (blueGround > 0 || redGround > 0) {
+    const groundRatio = blueGround > 0 ? (redGround / blueGround).toFixed(2) : 'N/A';
+    console.log(\`  Ground Asset Ratio: \${groundRatio}:1 (RED:BLUE)\`);
+    if (blueGround > redGround * 2) {
+      console.log('  Assessment: BLUE has SIGNIFICANT ground force advantage');
+    } else if (blueGround > redGround) {
+      console.log('  Assessment: BLUE has ground force advantage');
+    } else if (redGround > blueGround * 2) {
+      console.log('  Assessment: RED has SIGNIFICANT ground force advantage');
+    } else if (redGround > blueGround) {
+      console.log('  Assessment: RED has ground force advantage');
+    } else {
+      console.log('  Assessment: Ground force parity');
+    }
+  } else {
+    console.log('  Assessment: No ground assets currently active');
+  }
+  console.log('');
+  
+  console.log('INFRASTRUCTURE:');
+  console.log(\`  Airbases Available: \${airbaseAnalysis.total} total\`);
+  const neutralAirbases = airbaseAnalysis.byCoalition['NEUTRAL'] || 0;
+  const blueAirbases = airbaseAnalysis.byCoalition['BLUE'] || 0;
+  const redAirbases = airbaseAnalysis.byCoalition['RED'] || 0;
+  if (blueAirbases > 0) console.log(\`  BLUE Controlled: \${blueAirbases} airbases\`);
+  if (redAirbases > 0) console.log(\`  RED Controlled: \${redAirbases} airbases\`);
+  if (neutralAirbases > 0) console.log(\`  Neutral Airbases: \${neutralAirbases} (available for either side)\`);
+  console.log('');
+  
+  console.log('ACTIVE ENGAGEMENTS:');
+  if (snapshot.spots.length > 0) {
+    console.log(\`  Active Targeting: \${snapshot.spots.length} laser/IR spots detected\`);
+    if (snapshot.spots.length > 20) {
+      console.log('  Assessment: HEAVY targeting activity - multiple engagements in progress');
+    } else if (snapshot.spots.length > 5) {
+      console.log('  Assessment: MODERATE targeting activity - several engagements');
+    } else {
+      console.log('  Assessment: Active targeting/engagement in progress');
+    }
+  } else {
+    console.log('  Assessment: No active targeting detected');
+  }
+  console.log('');
+  
+  if (snapshot.weaponsSummary.activeCount > 0) {
+    console.log(\`  Active Weapons: \${snapshot.weaponsSummary.activeCount} weapons in flight\`);
+    if (snapshot.weaponsSummary.activeCount > 50) {
+      console.log('  Assessment: MASSIVE weapons engagement - high intensity conflict');
+    } else if (snapshot.weaponsSummary.activeCount > 20) {
+      console.log('  Assessment: HEAVY weapons engagement - significant conflict');
+    } else if (snapshot.weaponsSummary.activeCount > 10) {
+      console.log('  Assessment: MODERATE weapons engagement');
+    } else {
+      console.log('  Assessment: Active weapons engagement ongoing');
+    }
+  } else {
+    console.log('  Active Weapons: None detected');
+    console.log('  Assessment: No weapons in flight');
+  }
+  console.log('');
+  
+  console.log('=== COMMANDER RECOMMENDATIONS ===\n');
+  const recommendations = [];
+  
+  if (unitAnalysis.total >= 400) {
+    recommendations.push(\`LARGE SCALE OPERATION: \${unitAnalysis.total} units tracked. This is a major engagement requiring comprehensive command and control.\`);
+  } else if (unitAnalysis.total >= 200) {
+    recommendations.push(\`MEDIUM-LARGE SCALE OPERATION: \${unitAnalysis.total} units tracked. Significant force deployment requiring coordinated operations.\`);
+  }
+  
+  if (blueAir === 0 && redAir > 0) {
+    recommendations.push('CRITICAL: BLUE has no air assets. Consider deploying air cover immediately.');
+  } else if (redAir === 0 && blueAir > 0) {
+    recommendations.push(\`AIR SUPERIORITY OPPORTUNITY: BLUE has \${blueAir} air assets vs RED's \${redAir}. Exploit air dominance for ground support.\`);
+  } else if (redAir > blueAir * 1.5) {
+    recommendations.push(\`AIR THREAT: RED maintains \${(redAir / blueAir).toFixed(1)}:1 air advantage. Prioritize air defense and SEAD operations.\`);
+  }
+  
+  if (snapshot.spots.length > 20) {
+    recommendations.push(\`HIGH INTENSITY CONFLICT: \${snapshot.spots.length} active targeting spots. Multiple simultaneous engagements. Prioritize threat assessment.\`);
+  } else if (snapshot.spots.length > 0) {
+    recommendations.push(\`ACTIVE ENGAGEMENT: \${snapshot.spots.length} targeting spots detected. Monitor for weapon launches.\`);
+  }
+  
+  if (snapshot.weaponsSummary.activeCount > 50) {
+    recommendations.push(\`MASSIVE WEAPONS ENGAGEMENT: \${snapshot.weaponsSummary.activeCount} weapons in flight. High-intensity conflict zone. Execute defensive measures.\`);
+  } else if (snapshot.weaponsSummary.activeCount > 0) {
+    recommendations.push(\`WEAPONS IN FLIGHT: \${snapshot.weaponsSummary.activeCount} active weapons. Track trajectories and prepare defensive measures.\`);
+  }
+  
+  if (blueUnits < redUnits && blueUnits > 0) {
+    const ratio = (redUnits / blueUnits).toFixed(1);
+    recommendations.push(\`FORCE DISPARITY: BLUE outnumbered \${ratio}:1. Consider reinforcement, tactical withdrawal, or asymmetric warfare strategies.\`);
+  } else if (blueUnits > redUnits * 1.5 && redUnits > 0) {
+    recommendations.push(\`FORCE ADVANTAGE: BLUE outnumbers RED \${(blueUnits / redUnits).toFixed(1)}:1. Consider aggressive operations.\`);
+  }
+  
+  if (neutralAirbases > 0) {
+    recommendations.push(\`STRATEGIC OPPORTUNITY: \${neutralAirbases} neutral airbases available. Consider securing key facilities for forward operations.\`);
+  }
+  
+  if (unknownUnits > 0) {
+    recommendations.push(\`DATA QUALITY ISSUE: \${unknownUnits} units with unknown classification. Verify identification and update tracking systems.\`);
+  }
+  
+  if (snapshot.logs.length > 100) {
+    recommendations.push(\`HIGH ACTIVITY: \${snapshot.logs.length} log entries indicate intense mission activity. Maintain situational awareness.\`);
+  }
+  
+  if (unitAnalysis.withPositions < unitAnalysis.total * 0.9) {
+    const pct = ((unitAnalysis.withPositions / unitAnalysis.total) * 100).toFixed(1);
+    recommendations.push(\`TRACKING ISSUE: Only \${pct}% of units have valid positions. Improve sensor coverage.\`);
+  }
+  
+  if (recommendations.length === 0) {
+    recommendations.push('SITUATION STABLE: No immediate threats detected. Continue monitoring.');
+  }
+  
+  recommendations.forEach((rec, idx) => {
+    console.log(\`  \${idx + 1}. \${rec}\`);
+  });
+  console.log('');
+  
+  console.log('=== DATA QUALITY ASSESSMENT ===\n');
+  const positionPct = unitAnalysis.total > 0 ? ((unitAnalysis.withPositions / unitAnalysis.total) * 100).toFixed(1) : '0.0';
+  console.log(\`Position Accuracy: \${positionPct}% of units have valid positions\`);
+  console.log(\`Data Freshness: Snapshot captured in \${duration}ms\`);
+  console.log(\`Context Completeness: All context endpoints queried and normalized\`);
+  console.log(\`Scale: \${unitAnalysis.total} units, \${snapshot.airbases.length} airbases, \${snapshot.spots.length} spots, \${snapshot.logs.length} logs\`);
+  console.log('');
+  
+  console.log('=== MISSION SCALE CLASSIFICATION ===\n');
+  if (unitAnalysis.total >= 500) {
+    console.log('  CLASSIFICATION: MASSIVE SCALE OPERATION');
+  } else if (unitAnalysis.total >= 300) {
+    console.log('  CLASSIFICATION: LARGE SCALE OPERATION');
+  } else if (unitAnalysis.total >= 100) {
+    console.log('  CLASSIFICATION: MEDIUM SCALE OPERATION');
+  } else {
+    console.log('  CLASSIFICATION: SMALL SCALE OPERATION');
+  }
+  console.log('');
+  
+  console.log('═══════════════════════════════════════════════════════════════');
+  console.log('  END OF COMMANDER REVIEW');
+  console.log('═══════════════════════════════════════════════════════════════');
+})();
+" 2>&1 | grep -v '"ts":' | grep -v '"level":' | grep -v '"event":' | grep -v 'bfis-unit-decode' | grep -v 'bfis-binary-fetch' | grep -v 'bfis-context-snapshot-ok'

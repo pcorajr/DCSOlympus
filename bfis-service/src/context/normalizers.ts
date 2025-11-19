@@ -330,8 +330,34 @@ export function normalizeDrawings(raw: unknown, logger?: StructuredLogger): Norm
           continue;
         }
         
-        const { lat, lon, lng, points, radius, text, name, mapX, mapY, x, y, callsignStr } = rawItem;
-        const geometry = { lat, lon, lng, points, radius, mapX, mapY, x, y };
+        const { lat, lon, lng, points, radius, text, name, mapX, mapY, x, y, callsignStr, layerName, layer, primitiveType } = rawItem;
+        
+        // Convert points object (with numeric keys) to array
+        let pointsArray: Array<{ lat: number; lng: number }> | undefined;
+        if (points && typeof points === "object") {
+          pointsArray = [];
+          for (const [key, value] of Object.entries(points)) {
+            // Skip non-numeric keys like "x", "y"
+            if (key !== "x" && key !== "y" && value && typeof value === "object") {
+              const point = value as any;
+              if (typeof point.lat === "number" && typeof point.lng === "number") {
+                pointsArray.push({ lat: point.lat, lng: point.lng });
+              }
+            }
+          }
+          // If no points extracted but we have lat/lng, use that as a single point
+          if (pointsArray.length === 0 && typeof lat === "number" && typeof lng === "number") {
+            pointsArray.push({ lat, lng });
+          }
+        }
+        
+        const geometry = { 
+          lat, lon, lng, 
+          points: pointsArray, 
+          radius, mapX, mapY, x, y,
+          coalition: layerName || layer,
+          type: primitiveType
+        };
         
         result.push({
           id: String(id),

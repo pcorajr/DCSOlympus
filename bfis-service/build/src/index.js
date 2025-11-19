@@ -19,12 +19,10 @@
  * The same machinery works whether BFIS is quietly automating background decisions
  * or acting as a chatty, voice-driven copilot.
  */
-
 import { loadConfig } from "./config/config.js";
 import { SnapshotReader } from "./snapshot/snapshot-reader.js";
 import { createStructuredLogger } from "./logger/structured-logger.js";
 import { PollingLoop } from "./runtime/polling-loop.js";
-
 /**
  * Main application entry point.
  *
@@ -36,44 +34,38 @@ import { PollingLoop } from "./runtime/polling-loop.js";
  *
  * All errors are logged as JSON for structured logging and container monitoring.
  */
-async function main(): Promise<void> {
-  const config = loadConfig();
-
-  const logger = createStructuredLogger(config.generalLogPath, config.logLevel);
-
-  logger.info("bfis-startup", {
-    bfisVersion: config.bfisVersion,
-    logLevel: config.logLevel,
-    olympusFrontendBaseUrl: config.olympusFrontendBaseUrl,
-    olympusBaseUrl: config.olympusBaseUrl,
-    olympusRole: config.olympusAuth.role,
-    olympusUsername: config.olympusAuth.username,
-  });
-
-  const snapshotReader = new SnapshotReader(config, logger);
-
-  // Connectivity probe: verify BFIS can reach Olympus and credentials are valid.
-  // This fails fast if Olympus is unreachable or authentication is misconfigured.
-  try {
-    await snapshotReader.probeMissionOnce();
-  } catch (err) {
-    // Log probe failure but don't crash - allows container to start for debugging.
-    logger.error("bfis-olympus-probe-error", {
-      message: err instanceof Error ? err.message : String(err),
+async function main() {
+    const config = loadConfig();
+    const logger = createStructuredLogger(config.generalLogPath, config.logLevel);
+    logger.info("bfis-startup", {
+        bfisVersion: config.bfisVersion,
+        logLevel: config.logLevel,
+        olympusFrontendBaseUrl: config.olympusFrontendBaseUrl,
+        olympusBaseUrl: config.olympusBaseUrl,
+        olympusRole: config.olympusAuth.role,
+        olympusUsername: config.olympusAuth.username,
     });
-  }
-
-  // Per T054a: Start polling loop to continuously poll Olympus endpoints
-  // The polling loop calls snapshotReader.readContextOnce() at configured intervals,
-  // handles session hash changes, and logs errors for retry on next tick.
-  // Future: After successful snapshot, invoke decider/command adapter (post-MVP).
-  const pollingLoop = new PollingLoop(config, logger, snapshotReader);
-  pollingLoop.start();
-
-  // Keep process alive - polling loop runs in background
-  // Process will exit if polling loop stops (unhandled error) or container is stopped
+    const snapshotReader = new SnapshotReader(config, logger);
+    // Connectivity probe: verify BFIS can reach Olympus and credentials are valid.
+    // This fails fast if Olympus is unreachable or authentication is misconfigured.
+    try {
+        await snapshotReader.probeMissionOnce();
+    }
+    catch (err) {
+        // Log probe failure but don't crash - allows container to start for debugging.
+        logger.error("bfis-olympus-probe-error", {
+            message: err instanceof Error ? err.message : String(err),
+        });
+    }
+    // Per T054a: Start polling loop to continuously poll Olympus endpoints
+    // The polling loop calls snapshotReader.readContextOnce() at configured intervals,
+    // handles session hash changes, and logs errors for retry on next tick.
+    // Future: After successful snapshot, invoke decider/command adapter (post-MVP).
+    const pollingLoop = new PollingLoop(config, logger, snapshotReader);
+    pollingLoop.start();
+    // Keep process alive - polling loop runs in background
+    // Process will exit if polling loop stops (unhandled error) or container is stopped
 }
-
 // Execute main and handle any uncaught promise rejections
 // Using void operator to explicitly ignore the promise (top-level await alternative)
 void main();

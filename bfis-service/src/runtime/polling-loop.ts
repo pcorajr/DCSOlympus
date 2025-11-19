@@ -2,8 +2,8 @@
  * Polling loop orchestrator for BFIS snapshot ingestion.
  * 
  * This module manages the continuous polling of Olympus endpoints by calling
- * `SnapshotReader.readOnce()` at configured intervals. It handles:
- * - Timing: Calls readOnce() at intervals from BfisConfig.polling
+ * `SnapshotReader.readContextOnce()` at configured intervals. It handles:
+ * - Timing: Calls readContextOnce() at intervals from BfisConfig.polling
  * - Session hash changes: Detects resets and logs bfis-session-reset events
  * - Error handling: Logs bfis-loop-error and retries on next tick
  * - Future: Invoking decider/command adapter per snapshot (post-MVP)
@@ -15,6 +15,9 @@
  * logs 1000ms, mission 5000ms). The loop uses the fastest interval (logs: 1000ms)
  * to ensure timely updates while respecting endpoint-specific intervals.
  * 
+ * Per spec-002: Uses readContextOnce() to get full context snapshots including
+ * airbases, bullseyes, spots, drawings, logs, and weapons summary.
+ * 
  * @see SnapshotReader
  * @see BfisConfig.polling
  */
@@ -22,7 +25,7 @@
 import type { BfisConfig } from "../config/config.js";
 import type { StructuredLogger } from "../logger/structured-logger.js";
 import type { SnapshotReader } from "../snapshot/snapshot-reader.js";
-import type { OlympusSnapshot } from "../../../shared-schemas/index.js";
+import type { BfisContextSnapshot } from "../context/types.js";
 
 /**
  * Polling loop state and control.
@@ -53,7 +56,7 @@ export class PollingLoop {
   /**
    * Start the polling loop.
    * 
-   * Begins calling `snapshotReader.readOnce()` at the configured polling interval.
+   * Begins calling `snapshotReader.readContextOnce()` at the configured polling interval.
    * Uses the fastest interval from config (typically logs: 1000ms) to ensure
    * timely updates. The loop continues until `stop()` is called.
    * 
@@ -97,7 +100,7 @@ export class PollingLoop {
   /**
    * Stop the polling loop.
    * 
-   * Stops calling `readOnce()` and clears the interval timer.
+   * Stops calling `readContextOnce()` and clears the interval timer.
    * Logs `bfis-loop-stopped` event on shutdown.
    */
   stop(): void {
@@ -118,7 +121,7 @@ export class PollingLoop {
   /**
    * Perform a single poll cycle.
    * 
-   * Calls `snapshotReader.readOnce()` and handles:
+   * Calls `snapshotReader.readContextOnce()` and handles:
    * - Session hash changes: Detects resets and logs bfis-session-reset
    * - Errors: Logs bfis-loop-error and continues (retries on next tick)
    * - Success: Updates lastSessionHash for change detection
@@ -129,18 +132,19 @@ export class PollingLoop {
    */
   private async pollOnce(): Promise<void> {
     try {
-      const snapshot: OlympusSnapshot = await this.snapshotReader.readOnce();
+      const snapshot: BfisContextSnapshot = await this.snapshotReader.readContextOnce();
 
       // Check for session hash change (mission reset)
-      if (this.lastSessionHash !== null && snapshot.sessionHash !== this.lastSessionHash) {
+      // Use snapshot.base.sessionHash since BfisContextSnapshot wraps OlympusSnapshot in base
+      if (this.lastSessionHash !== null && snapshot.base.sessionHash !== this.lastSessionHash) {
         this.logger.info("bfis-session-reset", {
           previousSessionHash: this.lastSessionHash,
-          newSessionHash: snapshot.sessionHash,
-          snapshotId: snapshot.snapshotId,
+          newSessionHash: snapshot.base.sessionHash,
+          snapshotId: snapshot.base.snapshotId,
         });
       }
 
-      this.lastSessionHash = snapshot.sessionHash;
+      this.lastSessionHash = snapshot.base.sessionHash;
 
       // TODO (post-MVP): Invoke decider/command adapter here
       // const decision = await this.decider.decide(snapshot);

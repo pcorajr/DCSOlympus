@@ -27,7 +27,7 @@ import type { BfisConfig } from "../config/config.js";
 import type { StructuredLogger } from "../logger/structured-logger.js";
 import type { OlympusSnapshot, OlympusUnit } from "../../../shared-schemas/index.js";
 import { decodeUnits } from "./unit-decoder.js";
-import { decodeWeapons } from "./weapon-decoder.js";
+import { decodeWeapons, type DecodedWeapon } from "./weapon-decoder.js";
 import type {
   BfisContextSnapshot,
   NormalizedAirbase,
@@ -123,6 +123,20 @@ export class SnapshotReader {
   private unitCache: Map<string, OlympusUnit> = new Map();
 
   /**
+   * Weapon state cache - accumulates full weapon data across multiple polls.
+   * 
+   * Key: weaponId (number)
+   * Value: Complete DecodedWeapon with all fields populated
+   * 
+   * This matches the frontend WeaponsManager pattern: maintain state between polls
+   * and merge incremental updates. Delta encoding means we only get changed fields,
+   * so we need to accumulate data over multiple cycles to get complete weapon info.
+   * 
+   * Cache is cleared on session hash changes (mission reset).
+   */
+  private weaponCache: Map<number, DecodedWeapon> = new Map();
+
+  /**
    * Create a new SnapshotReader with the given configuration.
    *
    * @param config - BFIS configuration containing Olympus URLs and auth
@@ -205,18 +219,90 @@ export class SnapshotReader {
       throw new Error(`Invalid snapshotId format: ${snapshot.snapshotId}`);
     }
 
-    // Validate unit positions (coordinates in valid ranges)
+    // Validate and filter unit positions (coordinates in valid ranges)
+    // Filter out corrupted units instead of throwing errors to prevent snapshot failure
+    const validUnits: OlympusUnit[] = [];
+    const invalidUnits: Array<{ unitId: string; reason: string }> = [];
+    
     for (const unit of snapshot.units) {
       const pos = unit.position;
-      if (pos.lat < -90 || pos.lat > 90) {
-        throw new Error(`Invalid latitude for unit ${unit.unitId}: ${pos.lat}`);
+      let isValid = true;
+      let reason = '';
+      
+      // Check for NaN or Infinity (data corruption)
+      if (!isFinite(pos.lat) || !isFinite(pos.lon) || !isFinite(pos.altMeters)) {
+        isValid = false;
+        reason = `Non-finite coordinates (lat=${pos.lat}, lon=${pos.lon}, alt=${pos.altMeters})`;
       }
-      if (pos.lon < -180 || pos.lon > 180) {
-        throw new Error(`Invalid longitude for unit ${unit.unitId}: ${pos.lon}`);
+      
+      // Validate latitude range
+      if (isValid && (pos.lat < -90 || pos.lat > 90)) {
+        isValid = false;
+        reason = `Invalid latitude: ${pos.lat} (must be -90 to 90)`;
       }
-      if (pos.altMeters < 0) {
-        throw new Error(`Invalid altitude for unit ${unit.unitId}: ${pos.altMeters}`);
+      
+      // Validate longitude range
+      if (isValid && (pos.lon < -180 || pos.lon > 180)) {
+        isValid = false;
+        reason = `Invalid longitude: ${pos.lon} (must be -180 to 180)`;
       }
+      
+      // Category-aware altitude validation
+      if (isValid) {
+        const category = unit.category || 'Unknown';
+        let minAltitude: number;
+        
+        if (category === 'NavyUnit' || category === 'Ship') {
+          // Naval units: Allow deep negative altitudes
+          // Surface ships typically -10m to -50m, submarines can be -500m or deeper
+          minAltitude = -1000;
+        } else if (category === 'GroundUnit') {
+          // Ground units: Allow moderate negative altitudes for below-sea-level terrain
+          // Dead Sea area is -430m, Death Valley is -86m, other low-lying areas exist
+          minAltitude = -500;
+        } else if (category === 'Aircraft' || category === 'Helicopter') {
+          // Aircraft: Should generally be above ground, but allow small negative
+          // for low-flying aircraft over below-sea-level terrain (e.g., Dead Sea at -430m)
+          minAltitude = -100;
+        } else {
+          // Unknown category: Use conservative default to catch data corruption
+          minAltitude = -100;
+        }
+        
+        if (pos.altMeters < minAltitude) {
+          isValid = false;
+          reason = `Invalid altitude: ${pos.altMeters}m (below minimum ${minAltitude}m for ${category})`;
+        }
+      }
+      
+      if (isValid) {
+        validUnits.push(unit);
+      } else {
+        invalidUnits.push({ unitId: unit.unitId, reason });
+        // Log warning for corrupted unit
+        if (this.logger) {
+          this.logger.warn("bfis-snapshot-invalid-unit", {
+            unitId: unit.unitId,
+            category: unit.category || 'Unknown',
+            coalition: unit.coalition || 'UNKNOWN',
+            reason,
+            position: { lat: pos.lat, lon: pos.lon, altMeters: pos.altMeters },
+          });
+        }
+      }
+    }
+    
+    // Replace units array with validated units
+    (snapshot as any).units = validUnits;
+    
+    // Log summary if any units were filtered
+    if (invalidUnits.length > 0 && this.logger) {
+      this.logger.warn("bfis-snapshot-filtered-units", {
+        totalUnits: snapshot.units.length + invalidUnits.length,
+        validUnits: validUnits.length,
+        filteredUnits: invalidUnits.length,
+        invalidUnitIds: invalidUnits.map(u => u.unitId),
+      });
     }
   }
 
@@ -369,6 +455,7 @@ export class SnapshotReader {
       
       // Per FR-009: Reset internal state on session hash change
       this.unitCache.clear();
+      this.weaponCache.clear();
       this.lastTimes = {}; // Clear lastTimes for full refresh on next poll
       // Reset baseline tracking on session change (new mission = new baseline)
       this.baselineSizes = {};
@@ -1007,7 +1094,7 @@ export class SnapshotReader {
 
     let weaponsUpdateTime: number;
     try {
-      const decoded = decodeWeapons(weaponsBuffer);
+      const decoded = decodeWeapons(weaponsBuffer, this.weaponCache);
       weaponsUpdateTime = decoded.updateTime;
     } catch (error) {
       // Per FR-012, FR-014: Log decode error with structured logging
@@ -1144,7 +1231,10 @@ export class SnapshotReader {
   /**
    * Read a complete context snapshot including all environment data.
    * 
-   * Extends the base snapshot with airbases, bullseyes, spots, drawings, and logs.
+   * Builds on readOnce() to extend the base snapshot with airbases, bullseyes, spots, drawings, logs, and weapons summary.
+   * 
+   * Per spec-002 Section 5.1: This method calls readOnce() first to get the base snapshot (mission + units),
+   * then fetches and normalizes the additional context endpoints.
    * 
    * Per SC-001: Returns unified BfisContextSnapshot.
    * Per SC-002: Handles partial failures for context endpoints gracefully.
@@ -1153,27 +1243,51 @@ export class SnapshotReader {
    * @returns Complete BfisContextSnapshot
    */
   async readContextOnce(): Promise<BfisContextSnapshot> {
-    // 1. Fetch Mission (Critical - defines session)
-    const missionData = await this.fetchMission();
-    
-    const isFirstPoll = this.lastSessionHash === null;
-    const sessionChangedBeforeCheck = !isFirstPoll && this.lastSessionHash !== missionData.sessionHash;
+    // 1. Capture lastTimes before readOnce() updates them
+    // readOnce() fetches logs and updates lastTimes["logs"], so we need the pre-readOnce() value
+    const logsLastTimeBeforeRead = this.lastTimes["logs"] || 0;
+    const weaponsLastTimeBeforeRead = this.lastTimes["weapons"] || 0;
 
-    if (!isFirstPoll) {
-      this.checkSessionHash(missionData.sessionHash, false);
-    }
+    // 2. Get base snapshot (mission + units) via readOnce()
+    // This handles session hash checking, unit caching, and all base snapshot logic
+    // Note: readOnce() also fetches logs internally but doesn't return them
+    const baseSnapshot = await this.readOnce();
 
-    const isSessionReset = isFirstPoll || sessionChangedBeforeCheck || Object.keys(this.lastTimes).length === 0;
-    const unitsLastTime = (isSessionReset ? 0 : this.lastTimes["units"]) || 0;
-    const weaponsLastTime = (isSessionReset ? 0 : this.lastTimes["weapons"]) || 0;
-    const logsLastTime = (isSessionReset ? 0 : this.lastTimes["logs"]) || 0;
+    // 3. Determine incremental fetch parameters for context endpoints
+    // For logs: use the pre-readOnce() value since readOnce() already fetched logs
+    // For weapons: use the pre-readOnce() value (we need to fetch again for full data)
+    // readOnce() already updated lastTimes, but we use the pre-update values for consistency
+    const weaponsLastTime = weaponsLastTimeBeforeRead;
+    const logsLastTime = logsLastTimeBeforeRead;
 
-    // 2. Parallel Fetch of All Data
-    // Units & Weapons are Critical (Fail if they fail)
+    // 3. Fetch additional context endpoints in parallel
+    // Weapons are needed for weapons summary (readOnce() fetches but doesn't return full data)
     // Context endpoints are Non-Critical (Return empty on fail)
     
-    const unitsPromise = this.fetchUnits(unitsLastTime);
-    const weaponsPromise = this.fetchWeapons(weaponsLastTime);
+    const weaponsPromise = this.fetchWeapons(weaponsLastTime)
+      .catch(err => {
+        // Per FR-008, FR-009: Log errors using existing event names from spec-001
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        const baseUrl = this.config.olympusBaseUrl.replace(/\/+$/, "");
+        if (errorMsg.includes("Failed to fetch")) {
+          const statusMatch = errorMsg.match(/(\d{3})\s/);
+          this.logger?.error("bfis-snapshot-http-error", {
+            url: `${baseUrl}/weapons${weaponsLastTime > 0 ? `?time=${weaponsLastTime}` : ""}`,
+            status: statusMatch ? parseInt(statusMatch[1], 10) : undefined,
+            statusText: errorMsg.includes("Unauthorized") ? "Unauthorized" : undefined,
+            message: errorMsg,
+            endpoint: "weapons",
+          });
+        } else {
+          this.logger?.error("bfis-snapshot-decode-error", {
+            endpoint: "weapons",
+            error: errorMsg,
+            errorType: err instanceof Error ? err.constructor.name : typeof err,
+          });
+        }
+        // Return empty buffer on error (will result in zero weapons summary)
+        return new ArrayBuffer(0);
+      });
     
     const logsPromise = this.fetchLogs(logsLastTime)
       .catch(err => {
@@ -1198,7 +1312,7 @@ export class SnapshotReader {
             errorType: err instanceof Error ? err.constructor.name : typeof err,
           });
         }
-        return { logs: [], time: missionData.time, sessionHash: missionData.sessionHash };
+        return { logs: [], time: baseSnapshot.time, sessionHash: baseSnapshot.sessionHash };
       });
 
     const airbasesPromise = this.fetchAirbases()
@@ -1222,7 +1336,7 @@ export class SnapshotReader {
             errorType: err instanceof Error ? err.constructor.name : typeof err,
           });
         }
-        return { airbases: [], time: missionData.time, sessionHash: missionData.sessionHash };
+        return { airbases: [], time: baseSnapshot.time, sessionHash: baseSnapshot.sessionHash };
       });
 
     const bullseyesPromise = this.fetchBullseyes()
@@ -1246,7 +1360,7 @@ export class SnapshotReader {
             errorType: err instanceof Error ? err.constructor.name : typeof err,
           });
         }
-        return { bullseyes: {}, time: missionData.time, sessionHash: missionData.sessionHash };
+        return { bullseyes: {}, time: baseSnapshot.time, sessionHash: baseSnapshot.sessionHash };
       });
       
     const spotsPromise = this.fetchSpots()
@@ -1270,7 +1384,7 @@ export class SnapshotReader {
             errorType: err instanceof Error ? err.constructor.name : typeof err,
           });
         }
-        return { spots: [], time: missionData.time, sessionHash: missionData.sessionHash };
+        return { spots: [], time: baseSnapshot.time, sessionHash: baseSnapshot.sessionHash };
       });
 
     const drawingsPromise = this.fetchDrawings()
@@ -1294,12 +1408,11 @@ export class SnapshotReader {
             errorType: err instanceof Error ? err.constructor.name : typeof err,
           });
         }
-        return { drawings: [], time: missionData.time, sessionHash: missionData.sessionHash };
+        return { drawings: [], time: baseSnapshot.time, sessionHash: baseSnapshot.sessionHash };
       });
 
-    // Await all
+    // 4. Await all context endpoint fetches
     const [
-      unitsBuffer,
       weaponsBuffer,
       logsData,
       airbasesData,
@@ -1307,7 +1420,6 @@ export class SnapshotReader {
       spotsData,
       drawingsData
     ] = await Promise.all([
-      unitsPromise,
       weaponsPromise,
       logsPromise,
       airbasesPromise,
@@ -1316,44 +1428,35 @@ export class SnapshotReader {
       drawingsPromise
     ]);
 
-    // 3. Process Units (Critical)
-    this.updateBaselineAndCheckLargeData("units", unitsBuffer.byteLength);
-    
-    let units: OlympusUnit[];
-    let unitsUpdateTime: number;
-    try {
-      const decoded = decodeUnits(unitsBuffer, this.logger);
-      unitsUpdateTime = decoded.updateTime;
-      units = decoded.units;
-    } catch (error) {
-      this.logger?.error("bfis-snapshot-decode-error", { endpoint: "units", error: String(error) });
-      throw error;
-    }
-    this.lastTimes["units"] = unitsUpdateTime;
-
-    // 4. Process Weapons (Critical)
-    this.updateBaselineAndCheckLargeData("weapons", weaponsBuffer.byteLength);
-    
+    // 5. Process Weapons (for weapons summary)
     let weaponsSummary: WeaponsSummary;
-    let weaponsUpdateTime: number;
-    try {
-      const decodedWeapons = decodeWeapons(weaponsBuffer);
-      weaponsUpdateTime = decodedWeapons.updateTime;
-      weaponsSummary = buildWeaponsSummary(decodedWeapons.weapons);
-    } catch (error) {
-       this.logger?.error("bfis-snapshot-decode-error", { endpoint: "weapons", error: String(error) });
-       throw error;
+    if (weaponsBuffer.byteLength > 0) {
+      try {
+        const decodedWeapons = decodeWeapons(weaponsBuffer, this.weaponCache);
+        weaponsSummary = buildWeaponsSummary(decodedWeapons.weapons);
+        // Update lastTimes for weapons (readOnce() already updated it, but we fetched again)
+        // Only update if this is a new fetch (not from readOnce())
+        if (!this.lastTimes["weapons"] || weaponsLastTime === 0) {
+          this.lastTimes["weapons"] = decodedWeapons.updateTime;
+        }
+      } catch (error) {
+        this.logger?.error("bfis-snapshot-decode-error", { endpoint: "weapons", error: String(error) });
+        // On decode error, return zeroed weapons summary
+        weaponsSummary = { lastUpdateTime: 0, activeCount: 0 };
+      }
+    } else {
+      // Empty buffer (error case) - return zeroed summary
+      weaponsSummary = { lastUpdateTime: 0, activeCount: 0 };
     }
-    this.lastTimes["weapons"] = weaponsUpdateTime;
 
-    // 5. Update Last Times for Context
+    // 6. Update Last Times for Context Endpoints
     if (logsData.time) this.lastTimes["logs"] = new Date(logsData.time).getTime();
     if (airbasesData.time) this.lastTimes["airbases"] = new Date(airbasesData.time).getTime();
     if (bullseyesData.time) this.lastTimes["bullseyes"] = new Date(bullseyesData.time).getTime();
     if (spotsData.time) this.lastTimes["spots"] = new Date(spotsData.time).getTime();
     if (drawingsData.time) this.lastTimes["drawings"] = new Date(drawingsData.time).getTime();
 
-    // 6. Normalize Context
+    // 7. Normalize Context Data
     const normalizedLogs = normalizeLogs(logsData);
     const normalizedAirbases = normalizeAirbases(airbasesData, this.logger);
     // Pass the bullseyes object, not the full response (which includes time/sessionHash)
@@ -1361,7 +1464,7 @@ export class SnapshotReader {
     const normalizedSpots = normalizeSpots(spotsData, this.logger);
     const normalizedDrawings = normalizeDrawings(drawingsData, this.logger);
 
-    // Check for large context data (FR-017)
+    // 8. Check for large context data (FR-017)
     // Per FR-017: Use existing event name bfis-snapshot-empty-data extended with endpoint and entryCount
     const LARGE_CONTEXT_THRESHOLD = 1000;
     if (this.logger) {
@@ -1402,38 +1505,7 @@ export class SnapshotReader {
       }
     }
 
-    // 7. Update Unit Cache
-    for (const unit of units) {
-      const existingUnit = this.unitCache.get(unit.unitId);
-      if (existingUnit) {
-        this.unitCache.set(unit.unitId, {
-          ...existingUnit,
-          ...unit,
-          position: unit.position.lat === 0 && unit.position.lon === 0 && unit.position.altMeters === 0
-            ? existingUnit.position
-            : unit.position,
-        });
-      } else {
-        this.unitCache.set(unit.unitId, unit);
-      }
-    }
-    const accumulatedUnits = Array.from(this.unitCache.values());
-
-    // 8. Assemble Snapshot
-    const snapshotId = randomUUID();
-    this.lastSessionHash = missionData.sessionHash;
-
-    const baseSnapshot: OlympusSnapshot = {
-      snapshotId,
-      missionId: missionData.missionId,
-      serverId: missionData.serverId,
-      sessionHash: missionData.sessionHash,
-      time: missionData.time,
-      units: [...accumulatedUnits],
-    };
-    
-    this.validateSnapshot(baseSnapshot);
-
+    // 9. Assemble Context Snapshot
     const contextSnapshot: BfisContextSnapshot = {
       base: baseSnapshot,
       airbases: normalizedAirbases,
@@ -1444,12 +1516,12 @@ export class SnapshotReader {
       weaponsSummary
     };
 
-    // 9. Log Success
+    // 10. Log Success
     if (this.logger) {
       this.logger.info("bfis-context-snapshot-ok", {
-        snapshotId,
-        sessionHash: missionData.sessionHash,
-        unitCount: accumulatedUnits.length,
+        snapshotId: baseSnapshot.snapshotId,
+        sessionHash: baseSnapshot.sessionHash,
+        unitCount: baseSnapshot.units.length,
         airbaseCount: normalizedAirbases.length,
         bullseyeCount: normalizedBullseyes.length,
         spotCount: normalizedSpots.length,
