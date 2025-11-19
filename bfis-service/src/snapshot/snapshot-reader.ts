@@ -28,6 +28,23 @@ import type { StructuredLogger } from "../logger/structured-logger.js";
 import type { OlympusSnapshot, OlympusUnit } from "../../../shared-schemas/index.js";
 import { decodeUnits } from "./unit-decoder.js";
 import { decodeWeapons } from "./weapon-decoder.js";
+import type {
+  BfisContextSnapshot,
+  NormalizedAirbase,
+  NormalizedBullseye,
+  NormalizedSpot,
+  NormalizedDrawing,
+  NormalizedLogEntry,
+  WeaponsSummary
+} from "../context/types.js";
+import {
+  normalizeAirbases,
+  normalizeBullseyes,
+  normalizeSpots,
+  normalizeDrawings,
+  normalizeLogs,
+  buildWeaponsSummary
+} from "../context/normalizers.js";
 
 /**
  * Convert Olympus role to command mode header value.
@@ -1120,5 +1137,212 @@ export class SnapshotReader {
     }
 
     return snapshotWithCache;
+  }
+
+  /**
+   * Read a complete context snapshot including all environment data.
+   * 
+   * Extends the base snapshot with airbases, bullseyes, spots, drawings, and logs.
+   * 
+   * Per SC-001: Returns unified BfisContextSnapshot.
+   * Per SC-002: Handles partial failures for context endpoints gracefully.
+   * Per SC-006: Targets < 3s execution time via parallel fetching.
+   * 
+   * @returns Complete BfisContextSnapshot
+   */
+  async readContextOnce(): Promise<BfisContextSnapshot> {
+    // 1. Fetch Mission (Critical - defines session)
+    const missionData = await this.fetchMission();
+    
+    const isFirstPoll = this.lastSessionHash === null;
+    const sessionChangedBeforeCheck = !isFirstPoll && this.lastSessionHash !== missionData.sessionHash;
+
+    if (!isFirstPoll) {
+      this.checkSessionHash(missionData.sessionHash, false);
+    }
+
+    const isSessionReset = isFirstPoll || sessionChangedBeforeCheck || Object.keys(this.lastTimes).length === 0;
+    const unitsLastTime = (isSessionReset ? 0 : this.lastTimes["units"]) || 0;
+    const weaponsLastTime = (isSessionReset ? 0 : this.lastTimes["weapons"]) || 0;
+    const logsLastTime = (isSessionReset ? 0 : this.lastTimes["logs"]) || 0;
+
+    // 2. Parallel Fetch of All Data
+    // Units & Weapons are Critical (Fail if they fail)
+    // Context endpoints are Non-Critical (Return empty on fail)
+    
+    const unitsPromise = this.fetchUnits(unitsLastTime);
+    const weaponsPromise = this.fetchWeapons(weaponsLastTime);
+    
+    const logsPromise = this.fetchLogs(logsLastTime)
+      .catch(err => {
+        this.logger?.warn("bfis-context-partial-failure", { endpoint: "logs", error: String(err) });
+        return { logs: [], time: missionData.time, sessionHash: missionData.sessionHash };
+      });
+
+    const airbasesPromise = this.fetchAirbases()
+      .catch(err => {
+        this.logger?.warn("bfis-context-partial-failure", { endpoint: "airbases", error: String(err) });
+        return { airbases: [], time: missionData.time, sessionHash: missionData.sessionHash };
+      });
+
+    const bullseyesPromise = this.fetchBullseyes()
+      .catch(err => {
+        this.logger?.warn("bfis-context-partial-failure", { endpoint: "bullseyes", error: String(err) });
+        return { bullseyes: {}, time: missionData.time, sessionHash: missionData.sessionHash };
+      });
+      
+    const spotsPromise = this.fetchSpots()
+      .catch(err => {
+        this.logger?.warn("bfis-context-partial-failure", { endpoint: "spots", error: String(err) });
+        return { spots: [], time: missionData.time, sessionHash: missionData.sessionHash };
+      });
+
+    const drawingsPromise = this.fetchDrawings()
+      .catch(err => {
+        this.logger?.warn("bfis-context-partial-failure", { endpoint: "drawings", error: String(err) });
+        return { drawings: [], time: missionData.time, sessionHash: missionData.sessionHash };
+      });
+
+    // Await all
+    const [
+      unitsBuffer,
+      weaponsBuffer,
+      logsData,
+      airbasesData,
+      bullseyesData,
+      spotsData,
+      drawingsData
+    ] = await Promise.all([
+      unitsPromise,
+      weaponsPromise,
+      logsPromise,
+      airbasesPromise,
+      bullseyesPromise,
+      spotsPromise,
+      drawingsPromise
+    ]);
+
+    // 3. Process Units (Critical)
+    this.updateBaselineAndCheckLargeData("units", unitsBuffer.byteLength);
+    
+    let units: OlympusUnit[];
+    let unitsUpdateTime: number;
+    try {
+      const decoded = decodeUnits(unitsBuffer, this.logger);
+      unitsUpdateTime = decoded.updateTime;
+      units = decoded.units;
+    } catch (error) {
+      this.logger?.error("bfis-snapshot-decode-error", { endpoint: "units", error: String(error) });
+      throw error;
+    }
+    this.lastTimes["units"] = unitsUpdateTime;
+
+    // 4. Process Weapons (Critical)
+    this.updateBaselineAndCheckLargeData("weapons", weaponsBuffer.byteLength);
+    
+    let weaponsSummary: WeaponsSummary;
+    let weaponsUpdateTime: number;
+    try {
+      const decodedWeapons = decodeWeapons(weaponsBuffer);
+      weaponsUpdateTime = decodedWeapons.updateTime;
+      weaponsSummary = buildWeaponsSummary(decodedWeapons.weapons);
+    } catch (error) {
+       this.logger?.error("bfis-snapshot-decode-error", { endpoint: "weapons", error: String(error) });
+       throw error;
+    }
+    this.lastTimes["weapons"] = weaponsUpdateTime;
+
+    // 5. Update Last Times for Context
+    if (logsData.time) this.lastTimes["logs"] = new Date(logsData.time).getTime();
+    if (airbasesData.time) this.lastTimes["airbases"] = new Date(airbasesData.time).getTime();
+    if (bullseyesData.time) this.lastTimes["bullseyes"] = new Date(bullseyesData.time).getTime();
+    if (spotsData.time) this.lastTimes["spots"] = new Date(spotsData.time).getTime();
+    if (drawingsData.time) this.lastTimes["drawings"] = new Date(drawingsData.time).getTime();
+
+    // 6. Normalize Context
+    const normalizedLogs = normalizeLogs(logsData);
+    const normalizedAirbases = normalizeAirbases(airbasesData, this.logger);
+    const normalizedBullseyes = normalizeBullseyes(bullseyesData.bullseyes);
+    const normalizedSpots = normalizeSpots(spotsData, this.logger);
+    const normalizedDrawings = normalizeDrawings(drawingsData, this.logger);
+
+    // Check for large context data (FR-017)
+    const LARGE_CONTEXT_THRESHOLD = 1000;
+    if (this.logger) {
+      if (normalizedLogs.length > LARGE_CONTEXT_THRESHOLD) {
+        this.logger.warn("bfis-large-context-data", { endpoint: "logs", count: normalizedLogs.length, threshold: LARGE_CONTEXT_THRESHOLD });
+      }
+      if (normalizedAirbases.length > LARGE_CONTEXT_THRESHOLD) {
+        this.logger.warn("bfis-large-context-data", { endpoint: "airbases", count: normalizedAirbases.length, threshold: LARGE_CONTEXT_THRESHOLD });
+      }
+      if (normalizedBullseyes.length > LARGE_CONTEXT_THRESHOLD) {
+        this.logger.warn("bfis-large-context-data", { endpoint: "bullseyes", count: normalizedBullseyes.length, threshold: LARGE_CONTEXT_THRESHOLD });
+      }
+      if (normalizedSpots.length > LARGE_CONTEXT_THRESHOLD) {
+        this.logger.warn("bfis-large-context-data", { endpoint: "spots", count: normalizedSpots.length, threshold: LARGE_CONTEXT_THRESHOLD });
+      }
+      if (normalizedDrawings.length > LARGE_CONTEXT_THRESHOLD) {
+        this.logger.warn("bfis-large-context-data", { endpoint: "drawings", count: normalizedDrawings.length, threshold: LARGE_CONTEXT_THRESHOLD });
+      }
+    }
+
+    // 7. Update Unit Cache
+    for (const unit of units) {
+      const existingUnit = this.unitCache.get(unit.unitId);
+      if (existingUnit) {
+        this.unitCache.set(unit.unitId, {
+          ...existingUnit,
+          ...unit,
+          position: unit.position.lat === 0 && unit.position.lon === 0 && unit.position.altMeters === 0
+            ? existingUnit.position
+            : unit.position,
+        });
+      } else {
+        this.unitCache.set(unit.unitId, unit);
+      }
+    }
+    const accumulatedUnits = Array.from(this.unitCache.values());
+
+    // 8. Assemble Snapshot
+    const snapshotId = randomUUID();
+    this.lastSessionHash = missionData.sessionHash;
+
+    const baseSnapshot: OlympusSnapshot = {
+      snapshotId,
+      missionId: missionData.missionId,
+      serverId: missionData.serverId,
+      sessionHash: missionData.sessionHash,
+      time: missionData.time,
+      units: [...accumulatedUnits],
+    };
+    
+    this.validateSnapshot(baseSnapshot);
+
+    const contextSnapshot: BfisContextSnapshot = {
+      base: baseSnapshot,
+      airbases: normalizedAirbases,
+      bullseyes: normalizedBullseyes,
+      spots: normalizedSpots,
+      drawings: normalizedDrawings,
+      logs: normalizedLogs,
+      weaponsSummary
+    };
+
+    // 9. Log Success
+    if (this.logger) {
+      this.logger.info("bfis-context-snapshot-ok", {
+        snapshotId,
+        sessionHash: missionData.sessionHash,
+        unitCount: accumulatedUnits.length,
+        airbaseCount: normalizedAirbases.length,
+        bullseyeCount: normalizedBullseyes.length,
+        spotCount: normalizedSpots.length,
+        drawingCount: normalizedDrawings.length,
+        logCount: normalizedLogs.length,
+        weaponCount: weaponsSummary.activeCount
+      });
+    }
+
+    return contextSnapshot;
   }
 }

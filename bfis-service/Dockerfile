@@ -66,5 +66,6 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=15s \
   CMD if [ -n "$BFIS_HEALTHCHECK_URL" ]; then curl -fsS "$BFIS_HEALTHCHECK_URL" >/dev/null || exit 1; else exit 0; fi
 
 # Entrypoint: run compiled BFIS service.
-# Try the common TypeScript outDir layouts: build/src/index.js first, then build/index.js.
-CMD ["sh", "-c", "if [ -f build/src/index.js ]; then node build/src/index.js; elif [ -f build/index.js ]; then node build/index.js; else echo 'No BFIS entrypoint found in build/'; exit 1; fi"]
+# The 'tsc' output preserves directory structure if multiple roots are included (e.g. shared-schemas + src)
+# So 'build' contains 'bfis-service/src/index.js' instead of 'src/index.js' or just 'index.js'
+CMD ["sh", "-c", "if [ -f build/bfis-service/src/index.js ]; then node build/bfis-service/src/index.js; elif [ -f build/src/index.js ]; then node build/src/index.js; elif [ -f build/index.js ]; then node build/index.js; else echo 'No BFIS entrypoint found in build/'; exit 1; fi"]
