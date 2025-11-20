@@ -45,8 +45,11 @@ export interface OlympusUnitPosition {
 /**
  * Represents a single unit on the battlefield.
  * 
- * Decoded from binary `/olympus/units` endpoint. Contains all essential
- * information about a unit's identity, position, and status.
+ * Decoded from binary `/olympus/units` endpoint. Contains ALL available
+ * information about a unit - NO fields are skipped or filtered.
+ * 
+ * CRITICAL: When capturing data, ALL fields from the binary decoder MUST be
+ * included. This is a non-negotiable requirement for data capture operations.
  * 
  * @see OlympusSnapshot
  */
@@ -55,6 +58,8 @@ export interface OlympusUnit {
   unitId: string;
   /** Group identifier if unit belongs to a group (converted from uint32, optional) */
   groupId?: string;
+  /** Group name (optional) */
+  groupName?: string;
   /** Unit display name (optional) */
   name?: string;
   /** Unit coalition (BLUE, RED, NEUTRAL, UNKNOWN) */
@@ -62,7 +67,7 @@ export interface OlympusUnit {
   /** High-level category (e.g., "Aircraft", "Helicopter", "GroundUnit", "NavyUnit") */
   category: string;
   /** Specific unit type (e.g., "F-16C_50", "AH-64D") */
-  unitType: string;
+  unitType?: string;
   /** Unit position (lat, lon, altitude) */
   position: OlympusUnitPosition;
   /** Unit status/state (e.g., "idle", "attack", "follow", optional) */
@@ -71,6 +76,124 @@ export interface OlympusUnit {
   human?: boolean;
   /** Whether this unit is AI-controlled */
   controlled?: boolean;
+  /** Whether unit is alive */
+  alive?: boolean;
+  /** Alarm state */
+  alarmState?: number;
+  /** Radar state */
+  radarState?: boolean;
+  /** Country code */
+  country?: number;
+  /** Unit name (secondary field) */
+  unitName?: string;
+  /** Callsign */
+  callsign?: string;
+  /** Speed in m/s */
+  speed?: number;
+  /** Horizontal velocity */
+  horizontalVelocity?: number;
+  /** Vertical velocity */
+  verticalVelocity?: number;
+  /** Heading in radians */
+  heading?: number;
+  /** Track in radians */
+  track?: number;
+  /** Is active tanker */
+  isActiveTanker?: boolean;
+  /** Is active AWACS */
+  isActiveAWACS?: boolean;
+  /** On/off state */
+  onOff?: boolean;
+  /** Follow roads */
+  followRoads?: boolean;
+  /** Fuel level */
+  fuel?: number;
+  /** Desired speed */
+  desiredSpeed?: number;
+  /** Desired speed type */
+  desiredSpeedType?: string;
+  /** Desired altitude */
+  desiredAltitude?: number;
+  /** Desired altitude type */
+  desiredAltitudeType?: string;
+  /** Leader ID */
+  leaderID?: number;
+  /** Formation offset */
+  formationOffset?: { x: number; y: number; z: number };
+  /** Target ID */
+  targetID?: number;
+  /** Target position */
+  targetPosition?: OlympusUnitPosition;
+  /** Rules of Engagement */
+  ROE?: string;
+  /** Reaction to threat */
+  reactionToThreat?: string;
+  /** Emissions countermeasures */
+  emissionsCountermeasures?: string;
+  /** TACAN settings */
+  TACAN?: any;
+  /** Radio settings */
+  radio?: any;
+  /** General settings */
+  generalSettings?: any;
+  /** Ammo data */
+  ammo?: any[];
+  /** Contacts data */
+  contacts?: any[];
+  /** Active path */
+  activePath?: any[];
+  /** Is leader */
+  isLeader?: boolean;
+  /** Operate as */
+  operateAs?: number;
+  /** Shots scatter */
+  shotsScatter?: number;
+  /** Shots intensity */
+  shotsIntensity?: number;
+  /** Health */
+  health?: number;
+  /** Racetrack length */
+  racetrackLength?: number;
+  /** Racetrack anchor */
+  racetrackAnchor?: OlympusUnitPosition;
+  /** Racetrack bearing */
+  racetrackBearing?: number;
+  /** Time to next tasking */
+  timeToNextTasking?: number;
+  /** Barrel height */
+  barrelHeight?: number;
+  /** Muzzle velocity */
+  muzzleVelocity?: number;
+  /** Aim time */
+  aimTime?: number;
+  /** Shots to fire */
+  shotsToFire?: number;
+  /** Shots base interval */
+  shotsBaseInterval?: number;
+  /** Shots base scatter */
+  shotsBaseScatter?: number;
+  /** Engagement range */
+  engagementRange?: number;
+  /** Targeting range */
+  targetingRange?: number;
+  /** Aim method range */
+  aimMethodRange?: number;
+  /** Acquisition range */
+  acquisitionRange?: number;
+  /** Airborne */
+  airborne?: boolean;
+  /** Cargo weight */
+  cargoWeight?: number;
+  /** Drawing arguments */
+  drawingArguments?: any[];
+  /** Custom string */
+  customString?: string;
+  /** Custom integer */
+  customInteger?: number;
+  /** Task */
+  task?: string;
+  /** Has task */
+  hasTask?: boolean;
 }
 
 /**

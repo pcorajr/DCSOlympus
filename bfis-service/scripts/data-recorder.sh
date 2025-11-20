@@ -29,22 +29,23 @@ if ! [[ "$INTERVAL" =~ ^[1-5]$ ]]; then
   exit 1
 fi
 
-# Ensure we are in the repository root
-cd "$(dirname "$0")/../../.."
+# Get absolute path to script directory and repo root
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # Ensure logs directory exists
-mkdir -p bfis-service/logs
+mkdir -p "$REPO_ROOT/bfis-service/logs"
 
 echo "Starting BFIS Data Recorder..."
 echo "Interval: ${INTERVAL} seconds"
-echo "Output: bfis-service/logs/snapshot_*.json"
+echo "Output: $REPO_ROOT/bfis-service/logs/snapshot_*.json"
 echo "Press Ctrl+C to stop"
 echo ""
 
 # Run the recorder in Docker
 docker run --rm --network host \
   -v /home/dcs/.creds:/home/dcs/.creds:ro \
-  -v "$(pwd)/bfis-service/logs:/app/bfis-service/logs" \
+  -v "$REPO_ROOT/bfis-service/logs:/app/bfis-service/logs" \
   bfis-service \
   node build/bfis-service/src/scripts/data-recorder.js "${INTERVAL}"
 

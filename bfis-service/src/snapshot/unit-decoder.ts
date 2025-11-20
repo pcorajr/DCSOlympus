@@ -74,12 +74,14 @@ export function decodeUnits(buffer: ArrayBuffer, logger?: StructuredLogger): { u
     }
     
     // Initialize unit with defaults - will be populated from buffer fields
+    // CRITICAL: Capture ALL fields - no filtering, no skipping
     const unit: Partial<OlympusUnit> = {
       unitId: String(unitIdNum),
       coalition: "UNKNOWN",
       position: { lat: 0, lon: 0, altMeters: 0 },
       human: false,
       controlled: false,
+      alive: false,
     };
     
     // Extract data fields until endOfData
@@ -109,18 +111,18 @@ export function decodeUnits(buffer: ArrayBuffer, logger?: StructuredLogger): { u
             break;
           
           case DataIndexes.alive:
-            // Skip alive field (not needed for snapshot)
-            dataExtractor.extractBool();
+            // CAPTURE EVERYTHING - no skipping
+            unit.alive = dataExtractor.extractBool();
             break;
           
           case DataIndexes.alarmState:
-            // Skip alarmState (uint8)
-            dataExtractor.extractUInt8();
+            // CAPTURE EVERYTHING - no skipping
+            unit.alarmState = dataExtractor.extractUInt8();
             break;
           
           case DataIndexes.radarState:
-            // Skip radarState (bool)
-            dataExtractor.extractBool();
+            // CAPTURE EVERYTHING - no skipping
+            unit.radarState = dataExtractor.extractBool();
             break;
           
           case DataIndexes.human:
@@ -137,8 +139,8 @@ export function decodeUnits(buffer: ArrayBuffer, logger?: StructuredLogger): { u
             break;
           
           case DataIndexes.country:
-            // Skip country (uint8, not needed for snapshot)
-            dataExtractor.extractUInt8();
+            // CAPTURE EVERYTHING - no skipping
+            unit.country = dataExtractor.extractUInt8();
             break;
           
           case DataIndexes.name:
@@ -150,8 +152,9 @@ export function decodeUnits(buffer: ArrayBuffer, logger?: StructuredLogger): { u
             break;
           
           case DataIndexes.unitName:
-            // unitName is a fallback/secondary field
+            // CAPTURE EVERYTHING - unitName is a fallback/secondary field
             const unitName = dataExtractor.extractString();
+            unit.unitName = unitName;
             // Only use unitName if name wasn't already set
             if (!unit.unitType) {
               unit.unitType = unitName;
@@ -159,8 +162,13 @@ export function decodeUnits(buffer: ArrayBuffer, logger?: StructuredLogger): { u
             break;
           
           case DataIndexes.callsign:
-            // Skip callsign (not needed for snapshot)
-            dataExtractor.extractString();
+            // CAPTURE EVERYTHING - no skipping
+            unit.callsign = dataExtractor.extractString();
+            break;
+          
+          case DataIndexes.groupName:
+            // CAPTURE EVERYTHING - no skipping
+            unit.groupName = dataExtractor.extractString();
             break;
           
           case DataIndexes.unitID:
@@ -182,6 +190,276 @@ export function decodeUnits(buffer: ArrayBuffer, logger?: StructuredLogger): { u
             const stateNum = dataExtractor.extractUInt8();
             // Convert state enum to string (simplified - full implementation would use enumToState)
             unit.status = String(stateNum);
+            break;
+          
+          case DataIndexes.task:
+            // CAPTURE EVERYTHING - no skipping
+            unit.task = dataExtractor.extractString();
+            break;
+          
+          case DataIndexes.hasTask:
+            // CAPTURE EVERYTHING - no skipping
+            unit.hasTask = dataExtractor.extractBool();
+            break;
+          
+          case DataIndexes.speed:
+            // CAPTURE EVERYTHING - no skipping
+            unit.speed = dataExtractor.extractFloat64();
+            break;
+          
+          case DataIndexes.horizontalVelocity:
+            // CAPTURE EVERYTHING - no skipping
+            unit.horizontalVelocity = dataExtractor.extractFloat64();
+            break;
+          
+          case DataIndexes.verticalVelocity:
+            // CAPTURE EVERYTHING - no skipping
+            unit.verticalVelocity = dataExtractor.extractFloat64();
+            break;
+          
+          case DataIndexes.heading:
+            // CAPTURE EVERYTHING - no skipping
+            unit.heading = dataExtractor.extractFloat64();
+            break;
+          
+          case DataIndexes.track:
+            // CAPTURE EVERYTHING - no skipping
+            unit.track = dataExtractor.extractFloat64();
+            break;
+          
+          case DataIndexes.isActiveTanker:
+            // CAPTURE EVERYTHING - no skipping
+            unit.isActiveTanker = dataExtractor.extractBool();
+            break;
+          
+          case DataIndexes.isActiveAWACS:
+            // CAPTURE EVERYTHING - no skipping
+            unit.isActiveAWACS = dataExtractor.extractBool();
+            break;
+          
+          case DataIndexes.onOff:
+            // CAPTURE EVERYTHING - no skipping
+            unit.onOff = dataExtractor.extractBool();
+            break;
+          
+          case DataIndexes.followRoads:
+            // CAPTURE EVERYTHING - no skipping
+            unit.followRoads = dataExtractor.extractBool();
+            break;
+          
+          case DataIndexes.fuel:
+            // CAPTURE EVERYTHING - no skipping
+            unit.fuel = dataExtractor.extractUInt16();
+            break;
+          
+          case DataIndexes.desiredSpeed:
+            // CAPTURE EVERYTHING - no skipping
+            unit.desiredSpeed = dataExtractor.extractFloat64();
+            break;
+          
+          case DataIndexes.desiredSpeedType:
+            // CAPTURE EVERYTHING - no skipping
+            unit.desiredSpeedType = dataExtractor.extractBool() ? "CAS" : "GS";
+            break;
+          
+          case DataIndexes.desiredAltitude:
+            // CAPTURE EVERYTHING - no skipping
+            unit.desiredAltitude = dataExtractor.extractFloat64();
+            break;
+          
+          case DataIndexes.desiredAltitudeType:
+            // CAPTURE EVERYTHING - no skipping
+            unit.desiredAltitudeType = dataExtractor.extractBool() ? "ASL" : "AGL";
+            break;
+          
+          case DataIndexes.leaderID:
+            // CAPTURE EVERYTHING - no skipping
+            unit.leaderID = dataExtractor.extractUInt32();
+            break;
+          
+          case DataIndexes.formationOffset:
+            // CAPTURE EVERYTHING - no skipping
+            unit.formationOffset = dataExtractor.extractOffset();
+            break;
+          
+          case DataIndexes.targetID:
+            // CAPTURE EVERYTHING - no skipping
+            unit.targetID = dataExtractor.extractUInt32();
+            break;
+          
+          case DataIndexes.targetPosition:
+            // CAPTURE EVERYTHING - no skipping
+            const targetLatLng = dataExtractor.extractLatLng();
+            unit.targetPosition = convertLatLngToPosition(targetLatLng);
+            break;
+          
+          case DataIndexes.ROE:
+            // CAPTURE EVERYTHING - no skipping
+            const roeNum = dataExtractor.extractUInt8();
+            unit.ROE = String(roeNum);
+            break;
+          
+          case DataIndexes.reactionToThreat:
+            // CAPTURE EVERYTHING - no skipping
+            const reactionNum = dataExtractor.extractUInt8();
+            unit.reactionToThreat = String(reactionNum);
+            break;
+          
+          case DataIndexes.emissionsCountermeasures:
+            // CAPTURE EVERYTHING - no skipping
+            const emissionsNum = dataExtractor.extractUInt8();
+            unit.emissionsCountermeasures = String(emissionsNum);
+            break;
+          
+          case DataIndexes.TACAN:
+            // CAPTURE EVERYTHING - no skipping
+            unit.TACAN = dataExtractor.extractTacan();
+            break;
+          
+          case DataIndexes.radio:
+            // CAPTURE EVERYTHING - no skipping
+            unit.radio = dataExtractor.extractRadio();
+            break;
+          
+          case DataIndexes.generalSettings:
+            // CAPTURE EVERYTHING - no skipping
+            unit.generalSettings = dataExtractor.extractGeneralSettings();
+            break;
+          
+          case DataIndexes.ammo:
+            // CAPTURE EVERYTHING - no skipping
+            unit.ammo = dataExtractor.extractAmmo();
+            break;
+          
+          case DataIndexes.contacts:
+            // CAPTURE EVERYTHING - no skipping
+            unit.contacts = dataExtractor.extractContacts();
+            break;
+          
+          case DataIndexes.activePath:
+            // CAPTURE EVERYTHING - no skipping
+            unit.activePath = dataExtractor.extractActivePath();
+            break;
+          
+          case DataIndexes.isLeader:
+            // CAPTURE EVERYTHING - no skipping
+            unit.isLeader = dataExtractor.extractBool();
+            break;
+          
+          case DataIndexes.operateAs:
+            // CAPTURE EVERYTHING - no skipping
+            unit.operateAs = dataExtractor.extractUInt8();
+            break;
+          
+          case DataIndexes.shotsScatter:
+            // CAPTURE EVERYTHING - no skipping
+            unit.shotsScatter = dataExtractor.extractUInt8();
+            break;
+          
+          case DataIndexes.shotsIntensity:
+            // CAPTURE EVERYTHING - no skipping
+            unit.shotsIntensity = dataExtractor.extractUInt8();
+            break;
+          
+          case DataIndexes.health:
+            // CAPTURE EVERYTHING - no skipping
+            unit.health = dataExtractor.extractUInt8();
+            break;
+          
+          case DataIndexes.racetrackLength:
+            // CAPTURE EVERYTHING - no skipping
+            unit.racetrackLength = dataExtractor.extractFloat64();
+            break;
+          
+          case DataIndexes.racetrackAnchor:
+            // CAPTURE EVERYTHING - no skipping
+            const racetrackLatLng = dataExtractor.extractLatLng();
+            unit.racetrackAnchor = convertLatLngToPosition(racetrackLatLng);
+            break;
+          
+          case DataIndexes.racetrackBearing:
+            // CAPTURE EVERYTHING - no skipping
+            unit.racetrackBearing = dataExtractor.extractFloat64();
+            break;
+          
+          case DataIndexes.timeToNextTasking:
+            // CAPTURE EVERYTHING - no skipping
+            unit.timeToNextTasking = dataExtractor.extractFloat64();
+            break;
+          
+          case DataIndexes.barrelHeight:
+            // CAPTURE EVERYTHING - no skipping
+            unit.barrelHeight = dataExtractor.extractFloat64();
+            break;
+          
+          case DataIndexes.muzzleVelocity:
+            // CAPTURE EVERYTHING - no skipping
+            unit.muzzleVelocity = dataExtractor.extractFloat64();
+            break;
+          
+          case DataIndexes.aimTime:
+            // CAPTURE EVERYTHING - no skipping
+            unit.aimTime = dataExtractor.extractFloat64();
+            break;
+          
+          case DataIndexes.shotsToFire:
+            // CAPTURE EVERYTHING - no skipping
+            unit.shotsToFire = dataExtractor.extractUInt32();
+            break;
+          
+          case DataIndexes.shotsBaseInterval:
+            // CAPTURE EVERYTHING - no skipping
+            unit.shotsBaseInterval = dataExtractor.extractFloat64();
+            break;
+          
+          case DataIndexes.shotsBaseScatter:
+            // CAPTURE EVERYTHING - no skipping
+            unit.shotsBaseScatter = dataExtractor.extractFloat64();
+            break;
+          
+          case DataIndexes.engagementRange:
+            // CAPTURE EVERYTHING - no skipping
+            unit.engagementRange = dataExtractor.extractFloat64();
+            break;
+          
+          case DataIndexes.targetingRange:
+            // CAPTURE EVERYTHING - no skipping
+            unit.targetingRange = dataExtractor.extractFloat64();
+            break;
+          
+          case DataIndexes.aimMethodRange:
+            // CAPTURE EVERYTHING - no skipping
+            unit.aimMethodRange = dataExtractor.extractFloat64();
+            break;
+          
+          case DataIndexes.acquisitionRange:
+            // CAPTURE EVERYTHING - no skipping
+            unit.acquisitionRange = dataExtractor.extractFloat64();
+            break;
+          
+          case DataIndexes.airborne:
+            // CAPTURE EVERYTHING - no skipping
+            unit.airborne = dataExtractor.extractBool();
+            break;
+          
+          case DataIndexes.cargoWeight:
+            // CAPTURE EVERYTHING - no skipping
+            unit.cargoWeight = dataExtractor.extractFloat64();
+            break;
+          
+          case DataIndexes.drawingArguments:
+            // CAPTURE EVERYTHING - no skipping
+            unit.drawingArguments = dataExtractor.extractDrawingArguments();
+            break;
+          
+          case DataIndexes.customString:
+            // CAPTURE EVERYTHING - no skipping
+            unit.customString = dataExtractor.extractString();
+            break;
+          
+          case DataIndexes.customInteger:
+            // CAPTURE EVERYTHING - no skipping
+            unit.customInteger = dataExtractor.extractUInt32();
             break;
           
           default:
@@ -327,17 +605,17 @@ export function decodeUnits(buffer: ArrayBuffer, logger?: StructuredLogger): { u
       if (process.env.DEBUG_UNIT_BUFFER === "true") {
         console.log(`[DEBUG] Added unit ${unit.unitId}, position after unit: ${dataExtractor.getSeekPosition()}, buffer size: ${buffer.byteLength}`);
       }
+      // CRITICAL: Include ALL captured fields - no filtering, no omission
+      // This is a non-negotiable requirement for data capture operations
       units.push({
-        unitId: unit.unitId,
+        ...unit,
+        unitId: unit.unitId!,
         category: unit.category || "Unknown",
         coalition: unit.coalition || "UNKNOWN",
         // Priority: name (canonical) > unitName (fallback) > category (last resort)
         unitType: unit.unitType || unit.category || "Unknown",
         position: unit.position || { lat: 0, lon: 0, altMeters: 0 },
-        groupId: unit.groupId,
-        name: unit.name, // This is the canonical unit type field
-        status: unit.status,
-      });
+      } as OlympusUnit);
     }
   }
   

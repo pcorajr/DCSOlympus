@@ -27,7 +27,8 @@ describe("weapon-decoder", () => {
             const buffer = new ArrayBuffer(8);
             const view = new DataView(buffer);
             view.setBigUint64(0, updateTime, true);
-            const result = decodeWeapons(buffer);
+            const weaponCache = new Map();
+            const result = decodeWeapons(buffer, weaponCache);
             assert.strictEqual(result.updateTime, Number(updateTime));
             assert.ok(Array.isArray(result.weapons));
         });
@@ -37,9 +38,25 @@ describe("weapon-decoder", () => {
             const buffer = new ArrayBuffer(8);
             const view = new DataView(buffer);
             view.setBigUint64(0, updateTime, true);
-            const result = decodeWeapons(buffer);
+            const weaponCache = new Map();
+            const result = decodeWeapons(buffer, weaponCache);
             assert.strictEqual(result.updateTime, Number(updateTime));
             assert.strictEqual(result.weapons.length, 0);
+        });
+        test("maintains cache across multiple calls", () => {
+            const updateTime = BigInt(Date.now());
+            const buffer = new ArrayBuffer(8);
+            const view = new DataView(buffer);
+            view.setBigUint64(0, updateTime, true);
+            const weaponCache = new Map();
+            // First call
+            const result1 = decodeWeapons(buffer, weaponCache);
+            assert.strictEqual(result1.weapons.length, 0);
+            // Second call with same cache
+            const result2 = decodeWeapons(buffer, weaponCache);
+            assert.strictEqual(result2.weapons.length, 0);
+            // Cache should persist
+            assert.strictEqual(weaponCache.size, 0);
         });
     });
 });

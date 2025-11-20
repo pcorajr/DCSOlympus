@@ -97,6 +97,19 @@ export class SnapshotReader {
      */
     unitCache = new Map();
     /**
+     * Weapon state cache - accumulates full weapon data across multiple polls.
+     *
+     * Key: weaponId (number)
+     * Value: Complete DecodedWeapon with all fields populated
+     *
+     * This matches the frontend WeaponsManager pattern: maintain state between polls
+     * and merge incremental updates. Delta encoding means we only get changed fields,
+     * so we need to accumulate data over multiple cycles to get complete weapon info.
+     *
+     * Cache is cleared on session hash changes (mission reset).
+     */
+    weaponCache = new Map();
+    /**
      * Create a new SnapshotReader with the given configuration.
      *
      * @param config - BFIS configuration containing Olympus URLs and auth
@@ -171,20 +184,84 @@ export class SnapshotReader {
         if (!uuidRegex.test(snapshot.snapshotId)) {
             throw new Error(`Invalid snapshotId format: ${snapshot.snapshotId}`);
         }
-        // Validate unit positions (coordinates in valid ranges)
+        // Validate and filter unit positions (coordinates in valid ranges)
+        // Filter out corrupted units instead of throwing errors to prevent snapshot failure
+        const validUnits = [];
+        const invalidUnits = [];
         for (const unit of snapshot.units) {
             const pos = unit.position;
-            if (pos.lat < -90 || pos.lat > 90) {
-                throw new Error(`Invalid latitude for unit ${unit.unitId}: ${pos.lat}`);
+            let isValid = true;
+            let reason = '';
+            // Check for NaN or Infinity (data corruption)
+            if (!isFinite(pos.lat) || !isFinite(pos.lon) || !isFinite(pos.altMeters)) {
+                isValid = false;
+                reason = `Non-finite coordinates (lat=${pos.lat}, lon=${pos.lon}, alt=${pos.altMeters})`;
             }
-            if (pos.lon < -180 || pos.lon > 180) {
-                throw new Error(`Invalid longitude for unit ${unit.unitId}: ${pos.lon}`);
+            // Validate latitude range
+            if (isValid && (pos.lat < -90 || pos.lat > 90)) {
+                isValid = false;
+                reason = `Invalid latitude: ${pos.lat} (must be -90 to 90)`;
             }
-            // Allow small negative altitudes (up to -10m) for floating point precision and below-sea-level scenarios
-            // Reject only significantly negative values that indicate data corruption
-            if (pos.altMeters < -10) {
-                throw new Error(`Invalid altitude for unit ${unit.unitId}: ${pos.altMeters} (too far below sea level)`);
+            // Validate longitude range
+            if (isValid && (pos.lon < -180 || pos.lon > 180)) {
+                isValid = false;
+                reason = `Invalid longitude: ${pos.lon} (must be -180 to 180)`;
             }
+            // Category-aware altitude validation
+            if (isValid) {
+                const category = unit.category || 'Unknown';
+                let minAltitude;
+                if (category === 'NavyUnit' || category === 'Ship') {
+                    // Naval units: Allow deep negative altitudes
+                    // Surface ships typically -10m to -50m, submarines can be -500m or deeper
+                    minAltitude = -1000;
+                }
+                else if (category === 'GroundUnit') {
+                    // Ground units: Allow moderate negative altitudes for below-sea-level terrain
+                    // Dead Sea area is -430m, Death Valley is -86m, other low-lying areas exist
+                    minAltitude = -500;
+                }
+                else if (category === 'Aircraft' || category === 'Helicopter') {
+                    // Aircraft: Should generally be above ground, but allow small negative
+                    // for low-flying aircraft over below-sea-level terrain (e.g., Dead Sea at -430m)
+                    minAltitude = -100;
+                }
+                else {
+                    // Unknown category: Use conservative default to catch data corruption
+                    minAltitude = -100;
+                }
+                if (pos.altMeters < minAltitude) {
+                    isValid = false;
+                    reason = `Invalid altitude: ${pos.altMeters}m (below minimum ${minAltitude}m for ${category})`;
+                }
+            }
+            if (isValid) {
+                validUnits.push(unit);
+            }
+            else {
+                invalidUnits.push({ unitId: unit.unitId, reason });
+                // Log warning for corrupted unit
+                if (this.logger) {
+                    this.logger.warn("bfis-snapshot-invalid-unit", {
+                        unitId: unit.unitId,
+                        category: unit.category || 'Unknown',
+                        coalition: unit.coalition || 'UNKNOWN',
+                        reason,
+                        position: { lat: pos.lat, lon: pos.lon, altMeters: pos.altMeters },
+                    });
+                }
+            }
+        }
+        // Replace units array with validated units
+        snapshot.units = validUnits;
+        // Log summary if any units were filtered
+        if (invalidUnits.length > 0 && this.logger) {
+            this.logger.warn("bfis-snapshot-filtered-units", {
+                totalUnits: snapshot.units.length + invalidUnits.length,
+                validUnits: validUnits.length,
+                filteredUnits: invalidUnits.length,
+                invalidUnitIds: invalidUnits.map(u => u.unitId),
+            });
         }
     }
     /**
@@ -325,6 +402,7 @@ export class SnapshotReader {
             const oldSessionHash = this.lastSessionHash;
             // Per FR-009: Reset internal state on session hash change
             this.unitCache.clear();
+            this.weaponCache.clear();
             this.lastTimes = {}; // Clear lastTimes for full refresh on next poll
             // Reset baseline tracking on session change (new mission = new baseline)
             this.baselineSizes = {};
@@ -825,7 +903,7 @@ export class SnapshotReader {
         }
         let weaponsUpdateTime;
         try {
-            const decoded = decodeWeapons(weaponsBuffer);
+            const decoded = decodeWeapons(weaponsBuffer, this.weaponCache);
             weaponsUpdateTime = decoded.updateTime;
         }
         catch (error) {
@@ -1131,7 +1209,7 @@ export class SnapshotReader {
         let weaponsSummary;
         if (weaponsBuffer.byteLength > 0) {
             try {
-                const decodedWeapons = decodeWeapons(weaponsBuffer);
+                const decodedWeapons = decodeWeapons(weaponsBuffer, this.weaponCache);
                 weaponsSummary = buildWeaponsSummary(decodedWeapons.weapons);
                 // Update lastTimes for weapons (readOnce() already updated it, but we fetched again)
                 // Only update if this is a new fetch (not from readOnce())

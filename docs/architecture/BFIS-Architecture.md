@@ -24,11 +24,11 @@ Think of BFIS as a loop that keeps doing five things:
    **Planned specs under this Epic**  
    - **Spec 001 – Snapshot ingestion & unit decoding (DONE):** Establish mission + units snapshot pipeline (already implemented, see above).
    - **Spec 002 – Context snapshot (DONE):** Extended "see the battlefield" from just mission + units to include full context: airbases, bullseyes, spots, drawings, logs, and weapons summary. All context data is normalized into stable, typed structures and assembled into a unified `BfisContextSnapshot` object. Implementation includes graceful error handling for partial failures, session consistency management, and deterministic normalization. All 20 functional requirements and 7 success criteria met. Drawings detection requires visibility toggle in Olympus frontend; normalizer extracts coalition, type, and converts points to arrays. Commander battle review script provides group analysis with unit type breakdowns and ghost unit categorization (player slots vs dead units).
-   - **Spec 003 – Minimal weapons / hostility awareness (PLANNED):**
-     - Goal: use weapons data plus logs (and other cheap signals) to answer two questions:
-       - “Is the player (or player coalition) being attacked right now?”
-       - “Have real hostilities started yet in this mission?”
-     - Scope: minimal detection only—flip a couple of booleans / simple signals, not a full combat AI.
+   - **Spec 003 – Minimal hostility awareness (PLANNED):**
+     - Goal: use weapons data plus logs (and other cheap signals) to answer one question:
+       - "Have real hostilities started yet in this mission?"
+     - Scope: minimal detection only—flip a boolean / simple signal, not a full combat AI.
+     - Note: Player attack detection removed from MVP scope (post-MVP feature).
 
 2. **Understand goals/intent (what are we trying to achieve?)**  
    Two possible sources of “what should happen next”:

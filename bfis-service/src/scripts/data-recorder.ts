@@ -131,7 +131,7 @@ async function main(): Promise<void> {
           name: u.name,
           coalition: u.coalition,
           category: u.category,
-          unitType: u.unitType,
+          unitType: u.unitType || u.category || "Unknown",
           position: u.position,
           status: u.status,
           human: u.human,

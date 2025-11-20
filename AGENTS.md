@@ -83,6 +83,15 @@ You MUST NOT modify:
 - **Instrumented tests**:
   - Tests SHOULD assert on structured logs or key events where it makes sense, to ensure instrumentation stays intact and meaningful.
 
+### 8. Data Capture Requirements (NON-NEGOTIABLE)
+- **CAPTURE EVERYTHING - NO EXCEPTIONS**:
+  - When pulling data or dealing with captures, ALL fields from the binary decoder MUST be captured and included in the data object.
+  - NO fields are to be skipped, filtered, or omitted at the decoder level or any other level.
+  - This applies to units, weapons, and any other binary-decoded data structures.
+  - The full data object MUST be preserved - do not strip fields for "performance" or "simplicity" reasons.
+  - If a field exists in the binary format, it MUST be decoded and included in the output.
+  - This is a non-negotiable requirement for all data capture operations, research spikes, and telemetry gathering.
+
 ## Common Workflows
 
 ### When Creating New BFIS Code
