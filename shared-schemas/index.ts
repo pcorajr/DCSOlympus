@@ -67,6 +67,10 @@ export interface OlympusUnit {
   position: OlympusUnitPosition;
   /** Unit status/state (e.g., "idle", "attack", "follow", optional) */
   status?: string;
+  /** Whether this unit is human-controlled (player) */
+  human?: boolean;
+  /** Whether this unit is AI-controlled */
+  controlled?: boolean;
 }
 
 /**

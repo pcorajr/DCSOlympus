@@ -78,6 +78,8 @@ export function decodeUnits(buffer: ArrayBuffer, logger?: StructuredLogger): { u
       unitId: String(unitIdNum),
       coalition: "UNKNOWN",
       position: { lat: 0, lon: 0, altMeters: 0 },
+      human: false,
+      controlled: false,
     };
     
     // Extract data fields until endOfData
@@ -122,13 +124,11 @@ export function decodeUnits(buffer: ArrayBuffer, logger?: StructuredLogger): { u
             break;
           
           case DataIndexes.human:
-            // Skip human (bool)
-            dataExtractor.extractBool();
+            unit.human = dataExtractor.extractBool();
             break;
           
           case DataIndexes.controlled:
-            // Skip controlled (bool)
-            dataExtractor.extractBool();
+            unit.controlled = dataExtractor.extractBool();
             break;
           
           case DataIndexes.coalition:
