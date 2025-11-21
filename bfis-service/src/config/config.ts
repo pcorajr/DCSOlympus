@@ -53,7 +53,7 @@ export interface OlympusAuthConfig {
  *
  * These intervals control how frequently BFIS polls different Olympus endpoints.
  * Conservative defaults are used to avoid adding load to the Olympus server.
- * Per spec: units/weapons 2000ms, logs 1000ms, mission/airbases/etc 5000-10000ms.
+ * Per spec: units/weapons 1000ms, logs 1000ms, mission/airbases/etc 5000-10000ms.
  */
 export interface PollingConfig {
   unitsMs: number;
@@ -286,8 +286,8 @@ function resolveOlympusAuth(): OlympusAuthConfig {
 function resolvePollingConfig(): PollingConfig {
   // Defaults based on MVP spec
   return {
-    unitsMs: Number(process.env.BFIS_POLL_UNITS_MS ?? 2000),
-    weaponsMs: Number(process.env.BFIS_POLL_WEAPONS_MS ?? 2000),
+    unitsMs: Number(process.env.BFIS_POLL_UNITS_MS ?? 1000),
+    weaponsMs: Number(process.env.BFIS_POLL_WEAPONS_MS ?? 1000),
     logsMs: Number(process.env.BFIS_POLL_LOGS_MS ?? 1000),
     missionMs: Number(process.env.BFIS_POLL_MISSION_MS ?? 5000),
     airbasesMs: Number(process.env.BFIS_POLL_AIRBASES_MS ?? 10000),
