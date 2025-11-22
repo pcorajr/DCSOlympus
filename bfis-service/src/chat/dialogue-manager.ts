@@ -18,7 +18,7 @@ import type { CommanderAgent } from "../agents/commander-agent.js";
 import type { SnapshotReader } from "../snapshot/snapshot-reader.js";
 import type { MissionContext } from "../agents/types.js";
 import { ActionApprovalManager } from "./action-approval.js";
-import { createLLMClient } from "../intent/llm-client.js";
+import { createLLMClient, type ToolDefinition } from "../intent/llm-client.js";
 import { createIntelTools } from "../agents/tools/intel-tools.js";
 import { WriterAgent } from "../agents/writer-agent.js";
 
@@ -34,6 +34,7 @@ export class DialogueManager {
   private readonly approvalManager: ActionApprovalManager;
   private readonly maxHistoryLength: number;
   private readonly intelTools: ReturnType<typeof createIntelTools>;
+  private readonly toolDefinitions: ToolDefinition[];
   private readonly writerAgent: WriterAgent;
   private currentSessionHash: string;
 
@@ -53,12 +54,24 @@ export class DialogueManager {
     this.maxHistoryLength = config.chat?.maxHistoryLength ?? 20;
     this.currentSessionHash = "default";
     
-    // Initialize Intel tools for LLM
+    // Initialize Intel tools for LLM (LangChain format)
     this.intelTools = createIntelTools(
       this.intelAgent,
       this.snapshotReader,
       this.currentSessionHash
     );
+
+    // Convert LangChain tools to ToolDefinition format for LLMClient
+    this.toolDefinitions = this.intelTools.map(tool => ({
+      name: tool.name,
+      description: tool.description,
+      schema: tool.schema,
+      invoke: async (args: unknown) => {
+        // LangChain tools expect args to be passed directly
+        const result = await tool.invoke(args);
+        return typeof result === 'string' ? result : JSON.stringify(result);
+      },
+    }));
 
     // Initialize Writer agent for command execution
     this.writerAgent = new WriterAgent(config, logger);
@@ -67,6 +80,7 @@ export class DialogueManager {
       maxHistoryLength: this.maxHistoryLength,
       approvalTimeoutMs: config.chat?.approvalTimeoutMs ?? 300000,
       intelToolsCount: this.intelTools.length,
+      toolDefinitionsCount: this.toolDefinitions.length,
       timestamp: new Date().toISOString(),
     });
   }
@@ -117,14 +131,30 @@ export class DialogueManager {
         };
       }
 
-      // Build prompt with conversation context and Intel tool description
+      // Build prompt with conversation context
       const prompt = this.buildPrompt(input);
 
-      // Call LLM with Intel tool access
-      const llmResponse = await this.llmClient.invoke(prompt, {
-        temperature: 0.7,
-        maxTokens: 4000,
-      });
+      // Call LLM with Intel tool access (tools are now properly registered)
+      const llmResponse = await this.llmClient.invokeWithTools(
+        prompt,
+        this.toolDefinitions,
+        {
+          temperature: 0.7,
+          maxTokens: 4000,
+        }
+      );
+
+      // Log tool usage if any tools were called
+      if (llmResponse.toolCalls && llmResponse.toolCalls.length > 0) {
+        this.logger.info("bfis-dialogue-tools-used", {
+          sessionId: input.sessionId,
+          toolCalls: llmResponse.toolCalls.map(tc => ({
+            toolName: tc.toolName,
+            arguments: tc.arguments,
+          })),
+          timestamp: new Date().toISOString(),
+        });
+      }
 
       // Parse LLM response to determine if it's proposing actions
       const parsedResponse = await this.parseLLMResponse(
