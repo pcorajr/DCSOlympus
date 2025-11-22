@@ -41,10 +41,35 @@ export class WriterAgent {
   /**
    * Translate decision actions into Olympus commands and execute or log them.
    *
+   * Per Spec-005: Requires explicit approval flag and approvedBy metadata.
+   *
    * @param input - Writer agent input (decision + available commands)
+   * @param approved - Explicit approval flag (required for Spec-005)
+   * @param approvedBy - Session ID or user identifier who approved (required for Spec-005)
    * @returns Array of command results, one per action
    */
-  async executeCommands(input: WriterAgentInput): Promise<CommandResult[]> {
+  async executeCommands(
+    input: WriterAgentInput,
+    approved?: boolean,
+    approvedBy?: string
+  ): Promise<CommandResult[]> {
+    // Spec-005: Enforce approval requirement in chat mode
+    if (approved === false) {
+      this.logger.warn("bfis-writer-unapproved-execution-blocked", {
+        decisionId: input.decision.decisionId,
+        timestamp: new Date().toISOString(),
+      });
+      throw new Error("Cannot execute unapproved decision");
+    }
+
+    // Log approval metadata if provided
+    if (approved === true && approvedBy) {
+      this.logger.info("bfis-writer-approved-execution", {
+        decisionId: input.decision.decisionId,
+        approvedBy,
+        timestamp: new Date().toISOString(),
+      });
+    }
     const startTime = Date.now();
     const decisionId = input.decision.decisionId;
     const actionCount = input.decision.actions.length;
