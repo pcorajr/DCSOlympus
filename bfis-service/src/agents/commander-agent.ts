@@ -351,4 +351,93 @@ Return ONLY valid JSON, no markdown formatting or additional text.`;
   private makeRulesBasedDecision(input: CommanderAgentInput): BfisDecision {
     return makeRulesBasedDecision(input.intelSummary, input.missionContext);
   }
+
+  /**
+   * Generate action proposal for human review (Spec-005 Phase 3).
+   *
+   * This method generates a decision proposal that will be presented to the human
+   * for approval. Unlike makeDecision(), this does NOT execute actions immediately.
+   *
+   * @param input - Proposal input with human intent and battlefield context
+   * @returns Proposed decision (not yet approved)
+   */
+  async generateProposal(input: {
+    humanIntent: string;
+    intelSummary?: CommanderAgentInput["intelSummary"];
+    conversationContext: Array<{ role: string; content: string }>;
+  }): Promise<BfisDecision> {
+    this.logger.info("bfis-commander-generate-proposal", {
+      humanIntent: input.humanIntent.substring(0, 100),
+      hasIntelSummary: !!input.intelSummary,
+      conversationLength: input.conversationContext.length,
+      timestamp: new Date().toISOString(),
+    });
+
+    // Build Commander input from proposal context
+    const commanderInput: CommanderAgentInput = {
+      intelSummary: input.intelSummary || {
+        snapshotId: "proposal",
+        snapshotTime: new Date().toISOString(),
+        unitCounts: { BLUE: 0, RED: 0, NEUTRAL: 0, UNKNOWN: 0 },
+        categoryCounts: {},
+        keyPositions: [],
+        threats: [],
+      },
+      missionContext: {
+        missionId: "proposal",
+        serverId: "proposal",
+        sessionHash: "proposal",
+        hostilitiesStarted: false, // Default to false for safety
+        time: new Date().toISOString(),
+      },
+      changes: undefined,
+      previousDecision: undefined,
+      playerIntent: input.humanIntent,
+    };
+
+    // Generate decision using standard makeDecision flow
+    const decision = await this.makeDecision(commanderInput);
+
+    this.logger.info("bfis-commander-proposal-generated", {
+      decisionId: decision.decisionId,
+      actionCount: decision.actions.length,
+      actionTypes: decision.actions.map(a => a.type),
+      timestamp: new Date().toISOString(),
+    });
+
+    return decision;
+  }
+
+  /**
+   * Finalize approved decision for execution (Spec-005 Phase 3).
+   *
+   * This method validates that a proposed decision is still valid and safe
+   * to execute after human approval. It may update the decision based on
+   * current battlefield state.
+   *
+   * @param proposedDecision - Decision that was proposed and approved by human
+   * @returns Finalized decision ready for execution
+   */
+  async finalizeDecision(proposedDecision: BfisDecision): Promise<BfisDecision> {
+    this.logger.info("bfis-commander-finalize-decision", {
+      decisionId: proposedDecision.decisionId,
+      actionCount: proposedDecision.actions.length,
+      timestamp: new Date().toISOString(),
+    });
+
+    // Validate decision is still valid
+    this.validateDecision(proposedDecision);
+
+    // For MVP, return the decision as-is
+    // Future enhancement: Re-validate against current battlefield state
+    // and potentially adjust actions if situation has changed significantly
+
+    this.logger.info("bfis-commander-decision-finalized", {
+      decisionId: proposedDecision.decisionId,
+      actionCount: proposedDecision.actions.length,
+      timestamp: new Date().toISOString(),
+    });
+
+    return proposedDecision;
+  }
 }
