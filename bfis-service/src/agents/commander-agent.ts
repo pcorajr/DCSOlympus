@@ -72,13 +72,15 @@ export class CommanderAgent {
       decision.serverId = input.missionContext.serverId;
       decision.model = this.config.llm.model;
 
-      // Log decision
+      // Log decision with full reasoning
       this.logger.info("bfis-commander-decision-made", {
         decisionId: decision.decisionId,
         snapshotId: input.intelSummary.snapshotId,
         actionCount: decision.actions.length,
         actionTypes: decision.actions.map((a: { type: string }) => a.type),
         reasoningLength: decision.reasoningNotes?.length ?? 0,
+        reasoningNotes: decision.reasoningNotes, // Full reasoning text
+        actions: decision.actions, // Full actions with all details
         generationTimeMs: Date.now() - startTime,
         usedFallback: false,
       });
@@ -108,10 +110,22 @@ export class CommanderAgent {
   private async generateLLMDecision(input: CommanderAgentInput): Promise<BfisDecision> {
     const prompt = this.buildPrompt(input);
 
-    const response = await this.llmClient.invoke(prompt, {
-      temperature: this.config.agents?.commander.temperature ?? 0.7,
-      maxTokens: this.config.agents?.commander.maxTokens ?? 4000,
-    });
+      // Log the prompt being sent to LLM
+      this.logger.info("bfis-commander-llm-prompt", {
+        promptLength: prompt.length,
+        prompt: prompt.substring(0, 1000), // First 1000 chars of prompt
+      });
+
+      const response = await this.llmClient.invoke(prompt, {
+        temperature: this.config.agents?.commander.temperature ?? 0.7,
+        maxTokens: this.config.agents?.commander.maxTokens ?? 4000,
+      });
+
+      // Log the raw LLM response
+      this.logger.info("bfis-commander-llm-response", {
+        responseLength: response.content.length,
+        rawResponse: response.content, // Full LLM response
+      });
 
     // Parse LLM response as JSON
     try {

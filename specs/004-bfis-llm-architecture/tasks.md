@@ -1573,7 +1573,7 @@ Generate a tactical decision as JSON with this structure:
 
 ### Tests for User Story 5
 
-- [ ] T024 [P] [US5] Create integration test for orchestrator in `bfis-service/src/agents/__tests__/orchestrator.test.ts`
+- [X] T024 [P] [US5] Create integration test for orchestrator in `bfis-service/src/agents/__tests__/orchestrator.test.ts`
 
   **CRITICAL: ALL tests MUST run in Docker container (per constitution).**
   
@@ -1658,7 +1658,7 @@ Generate a tactical decision as JSON with this structure:
 
 ### Implementation for User Story 5
 
-- [ ] T025 [US5] Implement LangGraph state machine in `bfis-service/src/agents/orchestrator.ts`
+- [X] T025 [US5] Implement state machine orchestrator in `bfis-service/src/agents/orchestrator.ts`
 
   **Important**: AgentState is immutable per types.ts. LangGraph nodes must return new state objects, not mutate existing state. Use spread operator or Object.assign to create new state snapshots.
   

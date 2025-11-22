@@ -21,6 +21,7 @@
  * @see SnapshotReader
  * @see BfisConfig.polling
  */
+import { v4 as uuidv4 } from "uuid";
 /**
  * Polling loop state and control.
  *
@@ -30,20 +31,24 @@ export class PollingLoop {
     config;
     logger;
     snapshotReader;
+    orchestrator;
     intervalId = null;
     isRunning = false;
     lastSessionHash = null;
+    previousSnapshot = null;
     /**
      * Create a new polling loop with the given dependencies.
      *
      * @param config - BFIS configuration containing polling intervals
      * @param logger - Structured logger for loop events
      * @param snapshotReader - SnapshotReader instance to poll
+     * @param orchestrator - Optional Orchestrator for multi-agent decision cycles
      */
-    constructor(config, logger, snapshotReader) {
+    constructor(config, logger, snapshotReader, orchestrator) {
         this.config = config;
         this.logger = logger;
         this.snapshotReader = snapshotReader;
+        this.orchestrator = orchestrator || null;
     }
     /**
      * Start the polling loop.
@@ -102,8 +107,7 @@ export class PollingLoop {
      * - Session hash changes: Detects resets and logs bfis-session-reset
      * - Errors: Logs bfis-loop-error and continues (retries on next tick)
      * - Success: Updates lastSessionHash for change detection
-     *
-     * Future: After successful snapshot, invoke decider/command adapter (post-MVP).
+     * - Orchestrator: Runs full decision cycle if orchestrator is configured
      *
      * @private
      */
@@ -118,12 +122,52 @@ export class PollingLoop {
                     newSessionHash: snapshot.base.sessionHash,
                     snapshotId: snapshot.base.snapshotId,
                 });
+                // Clear previous snapshot cache on session change
+                this.previousSnapshot = null;
             }
             this.lastSessionHash = snapshot.base.sessionHash;
-            // TODO (post-MVP): Invoke decider/command adapter here
-            // const decision = await this.decider.decide(snapshot);
-            // await this.commandAdapter.execute(decision);
-            // await this.ndjsonLogger.log(decision);
+            // Run orchestrator cycle if configured
+            if (this.orchestrator) {
+                const initialState = {
+                    currentSnapshot: snapshot,
+                    previousSnapshot: this.previousSnapshot,
+                    intelOutput: null,
+                    commanderInput: null,
+                    decision: null,
+                    writerInput: null,
+                    commandResults: null,
+                    error: null,
+                    cycleId: uuidv4(),
+                    cycleStartTime: new Date().toISOString(),
+                    cycleEndTime: null,
+                };
+                const finalState = await this.orchestrator.runCycle(initialState);
+                // Update previous snapshot for next cycle
+                this.previousSnapshot = snapshot;
+                // Log cycle results
+                if (finalState.error) {
+                    this.logger.warn("bfis-cycle-error", {
+                        cycleId: finalState.cycleId,
+                        agent: finalState.error.agent,
+                        message: finalState.error.message,
+                        recoverable: finalState.error.recoverable,
+                    });
+                }
+                else {
+                    this.logger.info("bfis-cycle-success", {
+                        cycleId: finalState.cycleId,
+                        decisionId: finalState.decision?.decisionId,
+                        commandCount: finalState.commandResults?.length || 0,
+                    });
+                }
+            }
+            else {
+                // No orchestrator - just log snapshot received
+                this.logger.debug("bfis-snapshot-received", {
+                    snapshotId: snapshot.base.snapshotId,
+                    unitCount: snapshot.base.units.length,
+                });
+            }
         }
         catch (err) {
             // Log error but continue polling (retry on next tick)

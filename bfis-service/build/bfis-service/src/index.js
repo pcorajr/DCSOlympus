@@ -23,6 +23,7 @@ import { loadConfig } from "./config/config.js";
 import { SnapshotReader } from "./snapshot/snapshot-reader.js";
 import { createStructuredLogger } from "./logger/structured-logger.js";
 import { PollingLoop } from "./runtime/polling-loop.js";
+import { Orchestrator } from "./agents/orchestrator.js";
 /**
  * Main application entry point.
  *
@@ -57,11 +58,12 @@ async function main() {
             message: err instanceof Error ? err.message : String(err),
         });
     }
+    // Initialize orchestrator for multi-agent decision cycles
+    const orchestrator = new Orchestrator(config, logger);
     // Per T054a: Start polling loop to continuously poll Olympus endpoints
     // The polling loop calls snapshotReader.readContextOnce() at configured intervals,
-    // handles session hash changes, and logs errors for retry on next tick.
-    // Future: After successful snapshot, invoke decider/command adapter (post-MVP).
-    const pollingLoop = new PollingLoop(config, logger, snapshotReader);
+    // handles session hash changes, and runs orchestrator cycles for each snapshot.
+    const pollingLoop = new PollingLoop(config, logger, snapshotReader, orchestrator);
     pollingLoop.start();
     // Keep process alive - polling loop runs in background
     // Process will exit if polling loop stops (unhandled error) or container is stopped
