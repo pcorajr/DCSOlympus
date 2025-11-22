@@ -31,6 +31,12 @@ The BFIS architecture already has separation of concerns that matches this visio
 
 The multi-agent architecture follows BFIS's existing module organization pattern. All agent code lives under `bfis-service/src/agents/`:
 
+> **Non‑Goals (MVP)**
+> - Do not change Olympus core code (`backend/**`, `frontend/**`, `mod/**`).
+> - Do not duplicate Olympus mission‑state logic (for example hostility detection); BFIS consumes results only.
+> - Do not introduce persistent state stores, message queues, or WebSockets; MVP uses in‑process polling only.
+> - Do not execute real Olympus commands in early MVP; Writer may log mapped commands instead of calling production endpoints.
+
 ```
 bfis-service/src/agents/
 ├── intel-agent.ts          # Intel agent implementation with snapshot tools
@@ -49,6 +55,8 @@ This structure mirrors existing BFIS patterns:
 - `bfis-service/src/decider/` - Decision logic (placeholder)
 
 Each agent module exports a single class or factory function that implements the agent's core behavior. The orchestrator (`orchestrator.ts`) wires the agents together using LangGraph and manages the state machine.
+
+`bfis-service/src/agents/types.ts` is the **single source of truth** for agent‑specific types (for example `TacticalSummary`, `SnapshotDelta`, `AgentState`). Code examples in this document mirror those interfaces but the implementation in `types.ts` governs.
 
 ## Type Definitions and Interfaces
 
@@ -221,9 +229,20 @@ export interface AgentState {
   /** Writer agent input (derived from decision) */
   writerInput: WriterAgentInput | null;
   /** Command execution results */
-  commandResults: Array<{ commandHash: string; status: string }> | null;
+  commandResults: Array<{ 
+    commandHash: string; 
+    status: "PENDING" | "SENT" | "CONFIRMED" | "FAILED"; 
+    error?: string;
+  }> | null;
   /** Error state (if any agent fails) */
-  error: { agent: string; message: string } | null;
+  error: { 
+    agent: "intel" | "commander" | "writer" | "orchestrator"; 
+    message: string;
+    timestamp: string;
+    recoverable: boolean;
+  } | null;
+  /** Human approval state for Copilot / human-in-the-loop */
+  userApproval?: boolean | null;
   /** Cycle metadata */
   cycleId: string;
   cycleStartTime: string;
@@ -249,7 +268,7 @@ For MVP, state is in-memory only. Future enhancements:
 **Error Propagation:**
 
 Errors propagate through the state object:
-- Agent sets `state.error = { agent: "intel", message: "..." }`
+- Agent sets `state.error = { agent: "intel", message: "...", timestamp, recoverable }`
 - Orchestrator checks `state.error` after each node
 - If error present, skip remaining nodes and log error
 - Return partial results if available
@@ -425,10 +444,10 @@ function makeDecision(
 }
 ```
 
-**Decider Integration:**
-- References existing `decider.ts` placeholder (lines 1-33)
-- Commander agent replaces/extends the placeholder Decider logic
-- Maintains same interface: takes snapshot + intent, returns `BfisDecision`
+**Decider Integration and Migration Path:**
+- The existing `bfis-service/src/decider/decider.ts` remains the public entry point for decision logic.
+- `decider.ts` is refactored into a thin adapter that constructs a `CommanderAgentInput` (and, in future, an `AgentState`) and delegates to `CommanderAgent` (or the full `Orchestrator`) to obtain a `BfisDecision`.
+- The `decider.ts` interface (input snapshot + intent → `BfisDecision`) remains stable so callers do not change; only the internal implementation migrates from placeholder logic to Commander‑backed logic.
 
 ### Writer Agent Integration
 
@@ -445,9 +464,9 @@ import type { BfisDecision, BfisAction } from "../../../shared-schemas/index.js"
 ```
 
 **Command Adapter (Future):**
-- Writer agent will integrate with Command Adapter (not yet implemented)
-- Command Adapter sends commands via `PUT /olympus` endpoint
-- Tracks command hashes and status via `GET /olympus/commands`
+- Writer agent will integrate with a dedicated Command Adapter module (not yet implemented).
+- Command Adapter sends commands via `PUT /olympus` endpoint and tracks command hashes and status via `GET /olympus/commands`.
+- For early MVP builds, Writer may **only log** mapped commands (using structured logging and NDJSON decision logs under `bfis-service/logs/`) instead of calling live Olympus endpoints; switching to real command execution is a controlled, explicit step.
 
 ### LLM Client Integration
 
@@ -473,11 +492,15 @@ const llmClient = createLLMClient(config);
 // bfis-service/src/runtime/polling-loop.ts
 // See: polling-loop.ts:135 for snapshot polling
 
-// Orchestrator can be called from polling loop:
+// Orchestrator replaces direct decider calls:
 // 1. Polling loop calls SnapshotReader.readContextOnce()
-// 2. Orchestrator runs agent cycle with snapshot
-// 3. Writer agent executes commands
-// 4. Next poll cycle observes results
+// 2. Polling loop builds an AgentState (including previousSnapshot cache)
+// 3. Orchestrator runs the multi-agent cycle with that state
+// 4. Writer agent executes or logs commands (via Command Adapter when implemented)
+// 5. Next poll cycle observes results via the updated snapshot
+
+// The legacy path that called decider.ts directly is removed once Orchestrator is wired in,
+// to avoid duplicate or conflicting decision flows.
 ```
 
 ## Configuration Requirements
@@ -616,6 +639,14 @@ Each agent has specific error handling behavior that propagates through the Lang
 - Validate action types against allowed set
 - Invalid decision: Log error, fallback to rules-based
 
+**Rules-Based Fallback (High-Level):**
+- Fallback decisions must be deterministic and conservative, prioritizing defensive behavior and human expectations:
+  - Do not spawn new units before `hostilitiesStarted === true` (respecting Olympus hostility logic as the source of truth).
+  - Prefer actions that defend BLUE key assets (for example airbases and critical infrastructure) over aggressive deep strikes.
+  - Enforce `maxActionsPerDecision` strictly and avoid issuing conflicting actions to the same unit or area.
+  - When in doubt or on repeated failures, emit a **no‑op** decision with clear reasoning in logs instead of guessing.
+- Fallback logic is implemented in Commander as a separate rules module so it can be unit‑tested independently of LLM behavior.
+
 ### Writer Agent Error Handling
 
 **Command Mapping Failures:**
@@ -741,23 +772,12 @@ export interface AgentState {
 ### Previous Snapshot Caching
 
 **Cache Management:**
-- Previous snapshot cached in Intel agent instance (not in LangGraph state)
-- Cache key: `sessionHash` (ensures cache cleared on mission reset)
-- Cache structure: `Map<string, BfisContextSnapshot>` (key = sessionHash)
-- Cache cleared when:
-  - `sessionHash` changes (mission reset)
-  - Cache size exceeds limit (FIFO eviction, max 10 snapshots)
-
-**Cache Usage:**
-```typescript
-// Intel agent maintains cache
-private snapshotCache: Map<string, BfisContextSnapshot> = new Map();
-
-// On snapshot fetch:
-const currentSnapshot = await snapshotReader.readContextOnce();
-const previousSnapshot = this.snapshotCache.get(currentSnapshot.base.sessionHash);
-this.snapshotCache.set(currentSnapshot.base.sessionHash, currentSnapshot);
-```
+- The orchestrator maintains the canonical `previousSnapshot` value in `AgentState`. This is the snapshot that Intel sees on the **next** cycle for change detection.
+- Implementations **may** also keep an internal Intel‑agent cache (for example for summary caching), but that cache is a performance optimization only and must be derived from and consistent with the `AgentState.previousSnapshot`.
+- Cache key for internal Intel caches SHOULD be `sessionHash` to ensure cache is cleared on mission reset.
+- Any internal caches MUST be cleared when:
+  - `sessionHash` changes (mission reset), or
+  - Cache size exceeds limit (for example FIFO eviction, max 10 snapshots).
 
 ### State Checkpointing (Future)
 
@@ -789,6 +809,8 @@ this.snapshotCache.set(currentSnapshot.base.sessionHash, currentSnapshot);
 ## Logging and Instrumentation
 
 All agents use structured logging following BFIS patterns (see `snapshot-reader.ts` for examples). Log events are written to both stdout and log files via the structured logger.
+
+All agent logs, decision NDJSON logs, and (future) state checkpoints MUST be written under the BFIS logs folder (for example `bfis-service/logs/`), in addition to stdout/stderr when running in Docker, to comply with workspace logging requirements.
 
 ### Intel Agent Log Events
 
@@ -960,8 +982,8 @@ logger.info("bfis-orchestrator-session-reset", {
 
 **Structured Logger Usage:**
 - All agents use `StructuredLogger` from `bfis-service/src/logger/structured-logger.ts`
-- Logs written to both stdout (for Docker) and log files
-- Log file path: `bfis-service/logs/bfis-service.log` (from config)
+- Logs written to both stdout (for Docker) and log files.
+- Log file paths are configured under the BFIS logs folder, typically `bfis-service/logs/bfis-service.log` and related NDJSON decision log files, as defined in service configuration.
 
 **Log Level Guidelines:**
 - `info`: Normal operation (cycle start/end, decisions made, commands mapped)
@@ -1192,7 +1214,8 @@ function routeAfterError(state: AgentState): string {
 async function checkErrorNode(state: AgentState): Promise<Partial<AgentState>> {
   // Check for Copilot mode interrupt
   if (config.mode === "copilot" && state.decision && !state.userApproval) {
-    // Pause and wait for user approval (async)
+    // Pause and wait for human approval (for example via HTTP API/UI).
+    // waitForUserApproval is an abstraction over that human-in-the-loop mechanism.
     const approval = await waitForUserApproval(state.decision);
     return { userApproval: approval };
   }
