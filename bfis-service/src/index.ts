@@ -25,6 +25,10 @@ import { SnapshotReader } from "./snapshot/snapshot-reader.js";
 import { createStructuredLogger } from "./logger/structured-logger.js";
 import { PollingLoop } from "./runtime/polling-loop.js";
 import { Orchestrator } from "./agents/orchestrator.js";
+import { IntelAgent } from "./agents/intel-agent.js";
+import { CommanderAgent } from "./agents/commander-agent.js";
+import { DialogueManager } from "./chat/dialogue-manager.js";
+import { createChatServer, startChatServer } from "./chat/http-server.js";
 
 /**
  * Main application entry point.
@@ -73,7 +77,41 @@ async function main(): Promise<void> {
   const pollingLoop = new PollingLoop(config, logger, snapshotReader, orchestrator);
   pollingLoop.start();
 
-  // Keep process alive - polling loop runs in background
+  // Per Spec-005: Initialize chat interface for human-in-the-loop Copilot mode
+  if (config.chat?.enabled) {
+    logger.info("bfis-chat-interface-initializing", {
+      port: config.chat.port,
+      timestamp: new Date().toISOString(),
+    });
+
+    // Initialize agents for Dialogue Manager
+    const intelAgent = new IntelAgent(config, logger);
+    const commanderAgent = new CommanderAgent(config, logger);
+
+    // Initialize Dialogue Manager
+    const dialogueManager = new DialogueManager(
+      config,
+      logger,
+      intelAgent,
+      commanderAgent,
+      snapshotReader
+    );
+
+    // Create and start HTTP server
+    const chatServer = createChatServer(config, logger, dialogueManager);
+    await startChatServer(chatServer, config, logger);
+
+    logger.info("bfis-chat-interface-started", {
+      port: config.chat.port,
+      timestamp: new Date().toISOString(),
+    });
+  } else {
+    logger.info("bfis-chat-interface-disabled", {
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  // Keep process alive - polling loop and HTTP server run in background
   // Process will exit if polling loop stops (unhandled error) or container is stopped
 }
 
