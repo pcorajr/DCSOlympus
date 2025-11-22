@@ -44,9 +44,9 @@ For orchestrating three LLMs talking to each other, consider the following frame
 **Example flow:**
 
 ```
-Intel Agent (with snapshot tools) → Commander Agent → Writer Agent → Execute
-         ↑                                  ↓                           ↓
-         └──────────────── feedback loop ───────────────────────────────┘
+Intel Agent (with snapshot tools) → Commander Agent → Writer Agent → Execute  
+         ↑                                  ↓                           ↓  
+         └──────────────── feedback loop ───────────────────────────────┘  
 ```
 
 ### AutoGen (Microsoft)
