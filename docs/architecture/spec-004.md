@@ -35,7 +35,6 @@ The multi-agent architecture follows BFIS's existing module organization pattern
 > - Do not change Olympus core code (`backend/**`, `frontend/**`, `mod/**`).
 > - Do not duplicate Olympus mission‑state logic (for example hostility detection); BFIS consumes results only.
 > - Do not introduce persistent state stores, message queues, or WebSockets; MVP uses in‑process polling only.
-> - Do not execute real Olympus commands in early MVP; Writer may log mapped commands instead of calling production endpoints.
 
 ```
 bfis-service/src/agents/
