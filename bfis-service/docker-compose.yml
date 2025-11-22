@@ -14,6 +14,9 @@ services:
       context: ..
       dockerfile: bfis-service/Dockerfile
     container_name: bfis-service-dev
+    ports:
+      # Expose chat interface port for testing from host
+      - "4513:4513"
     environment:
       # Olympus frontend proxy; BFIS talks to Olympus via this base URL.
       # Adjust host/port as needed for your environment.
@@ -38,6 +41,9 @@ services:
       context: ..
       dockerfile: bfis-service/Dockerfile
     container_name: bfis-service
+    ports:
+      # Expose chat interface port for testing from host
+      - "4513:4513"
     environment:
       - BFIS_OLYMPUS_BASE_URL=http://192.168.1.4:3000/olympus
       - BFIS_HEALTHCHECK_URL=http://192.168.1.4:3000/olympus/mission
