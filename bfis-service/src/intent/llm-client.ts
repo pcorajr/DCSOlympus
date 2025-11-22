@@ -77,14 +77,21 @@ class OllamaClient implements LLMClient {
         temperature: options?.temperature ?? 0.7,
         num_predict: options?.maxTokens,
         stop: options?.stopSequences,
+        stream: false, // Disable streaming for simpler response handling
       }),
     });
 
     if (!response.ok) {
-      throw new Error(`Ollama API error: ${response.statusText}`);
+      const errorText = await response.text();
+      throw new Error(`Ollama API error: ${response.statusText} - ${errorText}`);
     }
 
     const data = await response.json();
+    
+    if (!data.response) {
+      throw new Error(`Invalid Ollama response: missing 'response' field`);
+    }
+    
     return {
       content: data.response,
       usage: {

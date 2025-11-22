@@ -301,7 +301,7 @@
 
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T008 [P] [US1] Create unit test for Intel agent summary generation in `bfis-service/src/agents/__tests__/intel-agent.test.ts`
+- [X] T008 [P] [US1] Create unit test for Intel agent summary generation in `bfis-service/src/agents/__tests__/intel-agent.test.ts`
 
   **CRITICAL: ALL tests MUST run in Docker container (per constitution).**
   
@@ -358,7 +358,7 @@
   });
   ```
 
-- [ ] T009 [P] [US1] Create unit test for snapshot tools in `bfis-service/src/agents/__tests__/tools/snapshot-tools.test.ts`
+- [X] T009 [P] [US1] Create unit test for snapshot tools in `bfis-service/src/agents/__tests__/tools/snapshot-tools.test.ts`
 
   **CRITICAL: ALL tests MUST run in Docker container (per constitution).**
   
@@ -387,7 +387,7 @@
 
 ### Implementation for User Story 1
 
-- [ ] T010 [P] [US1] Implement snapshot tools in `bfis-service/src/agents/tools/snapshot-tools.ts`
+- [X] T010 [P] [US1] Implement snapshot tools in `bfis-service/src/agents/tools/snapshot-tools.ts`
 
   **Code snippet to guide implementation:**
   ```typescript
@@ -447,7 +447,7 @@
   );
   ```
 
-- [ ] T011 [US1] Implement tactical summary generation logic in `bfis-service/src/agents/intel-agent.ts`
+- [X] T011 [US1] Implement tactical summary generation logic in `bfis-service/src/agents/intel-agent.ts`
 
   **Code snippet to guide implementation:**
   ```typescript
@@ -619,14 +619,14 @@
   }
   ```
 
-- [ ] T012 [US1] Export snapshot tools from `bfis-service/src/agents/tools/index.ts`
+- [X] T012 [US1] Export snapshot tools from `bfis-service/src/agents/tools/index.ts`
 
   **Code snippet to guide implementation:**
   ```typescript
   export { getCurrentSnapshotTool, getSnapshotSummaryTool } from "./snapshot-tools.js";
   ```
 
-- [ ] T013 [US1] Add error handling and logging to Intel agent in `bfis-service/src/agents/intel-agent.ts`
+- [X] T013 [US1] Add error handling and logging to Intel agent in `bfis-service/src/agents/intel-agent.ts`
 
   **Code snippet to guide implementation:**
   ```typescript
@@ -667,7 +667,7 @@
 
 ### Tests for User Story 2
 
-- [ ] T014 [P] [US2] Create unit test for change detection in `bfis-service/src/agents/__tests__/intel-agent.test.ts`
+- [X] T014 [P] [US2] Create unit test for change detection in `bfis-service/src/agents/__tests__/intel-agent.test.ts`
 
   **CRITICAL: ALL tests MUST run in Docker container (per constitution).**
   
@@ -724,7 +724,7 @@
 
 ### Implementation for User Story 2
 
-- [ ] T015 [US2] Implement change detection logic in `bfis-service/src/agents/intel-agent.ts`
+- [X] T015 [US2] Implement change detection logic in `bfis-service/src/agents/intel-agent.ts`
 
   **Code snippet to guide implementation:**
   ```typescript
@@ -818,7 +818,7 @@
   }
   ```
 
-- [ ] T016 [US2] Add session hash change detection in `bfis-service/src/agents/intel-agent.ts`
+- [X] T016 [US2] Add session hash change detection in `bfis-service/src/agents/intel-agent.ts`
 
   **Code snippet to guide implementation:**
   ```typescript
@@ -853,7 +853,7 @@
 
 ### Tests for User Story 3
 
-- [ ] T017 [P] [US3] Create unit test for Commander agent decision-making in `bfis-service/src/agents/__tests__/commander-agent.test.ts`
+- [X] T017 [P] [US3] Create unit test for Commander agent decision-making in `bfis-service/src/agents/__tests__/commander-agent.test.ts`
 
   **CRITICAL: ALL tests MUST run in Docker container (per constitution).**
   
@@ -914,7 +914,7 @@
 
 ### Implementation for User Story 3
 
-- [ ] T018 [US3] Implement Commander agent in `bfis-service/src/agents/commander-agent.ts`
+- [X] T018 [US3] Implement Commander agent in `bfis-service/src/agents/commander-agent.ts`
 
   **Code snippet to guide implementation:**
   ```typescript
@@ -1105,7 +1105,7 @@ Generate a tactical decision as JSON with this structure:
   }
   ```
 
-- [ ] T019 [US3] Implement LLM client for Ollama in `bfis-service/src/intent/llm-client.ts`
+- [X] T019 [US3] Implement LLM client for Ollama in `bfis-service/src/intent/llm-client.ts`
 
   **Note**: MVP supports Ollama and LLMstudio. LLMstudio implementation follows same pattern as Ollama but uses different API endpoint. For MVP, prioritize Ollama; LLMstudio can be added as extension if needed.
   
@@ -1212,7 +1212,7 @@ Generate a tactical decision as JSON with this structure:
 
 ### Tests for User Story 4
 
-- [ ] T021 [P] [US4] Create unit test for Writer agent command translation in `bfis-service/src/agents/__tests__/writer-agent.test.ts`
+- [X] T021 [P] [US4] Create unit test for Writer agent command translation in `bfis-service/src/agents/__tests__/writer-agent.test.ts`
 
   **CRITICAL: ALL tests MUST run in Docker container (per constitution).**
   
@@ -1266,7 +1266,7 @@ Generate a tactical decision as JSON with this structure:
 
 ### Implementation for User Story 4
 
-- [ ] T022 [US4] Implement Writer agent in `bfis-service/src/agents/writer-agent.ts`
+- [X] T022 [US4] Implement Writer agent in `bfis-service/src/agents/writer-agent.ts`
 
   **Integration Note**: Writer agent maps BfisAction to Olympus command formats. For MVP, commands are logged or executed via direct HTTP calls to Olympus API endpoints. Future enhancement: integrate with existing CommandAdapter layer if available in `bfis-service/src/command/` or similar directory. Check for existing command execution utilities before implementing new HTTP client.
   

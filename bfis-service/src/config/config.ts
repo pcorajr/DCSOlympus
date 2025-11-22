@@ -336,13 +336,16 @@ function resolvePollingConfig(): PollingConfig {
  * If provider is "none", BFIS operates in rules-based mode only.
  * Empty strings for baseUrl/model indicate LLM is not configured.
  *
+ * Defaults to remote Ollama instance at 192.168.1.2:11434 with gpt-oss:20b model.
+ * Can be overridden via environment variables.
+ *
  * @returns LLM configuration
  */
 function resolveLlmConfig(): LlmConfig {
   return {
-    provider: process.env.BFIS_LLM_PROVIDER ?? "none",
-    baseUrl: process.env.BFIS_LLM_BASE_URL ?? "",
-    model: process.env.BFIS_LLM_MODEL ?? "",
+    provider: process.env.BFIS_LLM_PROVIDER ?? "ollama",
+    baseUrl: process.env.BFIS_LLM_BASE_URL ?? "http://192.168.1.2:11434",
+    model: process.env.BFIS_LLM_MODEL ?? "gpt-oss:20b",
   };
 }
 

@@ -223,13 +223,49 @@ function resolvePollingConfig() {
  * If provider is "none", BFIS operates in rules-based mode only.
  * Empty strings for baseUrl/model indicate LLM is not configured.
  *
+ * Defaults to remote Ollama instance at 192.168.1.2:11434 with gpt-oss:20b model.
+ * Can be overridden via environment variables.
+ *
  * @returns LLM configuration
  */
 function resolveLlmConfig() {
     return {
-        provider: process.env.BFIS_LLM_PROVIDER ?? "none",
-        baseUrl: process.env.BFIS_LLM_BASE_URL ?? "",
-        model: process.env.BFIS_LLM_MODEL ?? "",
+        provider: process.env.BFIS_LLM_PROVIDER ?? "ollama",
+        baseUrl: process.env.BFIS_LLM_BASE_URL ?? "http://192.168.1.2:11434",
+        model: process.env.BFIS_LLM_MODEL ?? "gpt-oss:20b",
+    };
+}
+/**
+ * Resolve agent configuration with defaults.
+ *
+ * @returns Agent configuration with all defaults applied
+ */
+function resolveAgentConfig() {
+    return {
+        intel: {
+            pollingIntervalMs: Number(process.env.BFIS_AGENT_INTEL_POLLING_MS ?? 2000),
+            enableChangeDetection: process.env.BFIS_AGENT_INTEL_CHANGE_DETECTION !== "false",
+            positionChangeThresholdMeters: Number(process.env.BFIS_AGENT_INTEL_POSITION_THRESHOLD_M ?? 1000),
+            maxTokens: Number(process.env.BFIS_AGENT_INTEL_MAX_TOKENS ?? 2000),
+            temperature: Number(process.env.BFIS_AGENT_INTEL_TEMPERATURE ?? 0.3),
+        },
+        commander: {
+            maxTokens: Number(process.env.BFIS_AGENT_COMMANDER_MAX_TOKENS ?? 4000),
+            temperature: Number(process.env.BFIS_AGENT_COMMANDER_TEMPERATURE ?? 0.7),
+            enableRulesFallback: process.env.BFIS_AGENT_COMMANDER_RULES_FALLBACK !== "false",
+            maxActionsPerDecision: Number(process.env.BFIS_AGENT_COMMANDER_MAX_ACTIONS ?? 10),
+        },
+        writer: {
+            maxTokens: Number(process.env.BFIS_AGENT_WRITER_MAX_TOKENS ?? 2000),
+            temperature: Number(process.env.BFIS_AGENT_WRITER_TEMPERATURE ?? 0.2),
+            enableCommandValidation: process.env.BFIS_AGENT_WRITER_VALIDATION !== "false",
+            commandExecutionMode: (process.env.BFIS_COMMAND_EXECUTION_MODE ?? "log"),
+        },
+        orchestrator: {
+            enableCheckpointing: process.env.BFIS_ORCHESTRATOR_CHECKPOINTING === "true",
+            maxCycles: Number(process.env.BFIS_ORCHESTRATOR_MAX_CYCLES ?? 10),
+            cycleTimeoutMs: Number(process.env.BFIS_ORCHESTRATOR_TIMEOUT_MS ?? 30000),
+        },
     };
 }
 /**
@@ -257,5 +293,6 @@ export function loadConfig() {
         polling: resolvePollingConfig(),
         ndjsonLogPath: process.env.BFIS_NDJSON_LOG_PATH ?? "logs/bfis-decisions.ndjson",
         llm: resolveLlmConfig(),
+        agents: resolveAgentConfig(),
     };
 }

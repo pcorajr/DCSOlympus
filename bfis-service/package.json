@@ -8,7 +8,8 @@
     "build": "tsc",
     "start": "node build/index.js",
     "dev": "ts-node --esm src/index.ts",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "test": "node --test"
   },
   "private": true,
   "dependencies": {
@@ -17,7 +18,8 @@
     "@turf/turf": "^6.5.0",
     "dotenv": "^16.4.5",
     "lodash": "^4.17.21",
-    "uuid": "^11.1.0"
+    "uuid": "^11.1.0",
+    "zod": "^3.22.4"
   },
   "devDependencies": {
     "@types/lodash": "^4.17.0",

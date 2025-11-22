@@ -1,6 +1,8 @@
 /**
  * Tool exports for agent tools.
  *
- * Placeholder file - implementation will be added in Phase 3.
+ * Exports all tools available to agents for battlefield observation and analysis.
  */
+
+export { getSnapshotSummaryTool } from "./snapshot-tools.js";
 
