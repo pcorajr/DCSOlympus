@@ -31,6 +31,25 @@ export interface LLMResponse {
     completionTokens?: number;
     totalTokens?: number;
   };
+  /** Optional tool calls made by the LLM. */
+  toolCalls?: Array<{
+    toolName: string;
+    arguments: Record<string, unknown>;
+  }>;
+}
+
+/**
+ * Tool definition for LLM tool calling.
+ */
+export interface ToolDefinition {
+  /** Tool name (must match the function name). */
+  name: string;
+  /** Human-readable description of what the tool does. */
+  description: string;
+  /** JSON schema for tool parameters (Zod schema or plain object). */
+  schema: unknown;
+  /** The actual function to invoke when tool is called. */
+  invoke: (args: unknown) => Promise<string>;
 }
 
 /**
@@ -49,6 +68,24 @@ export interface LLMClient {
    * @throws Error if LLM service unavailable or request fails
    */
   invoke(prompt: string, options?: LLMOptions): Promise<LLMResponse>;
+
+  /**
+   * Invoke LLM with tool calling support.
+   *
+   * Per Spec-005: Enable LLM to call tools (e.g., Intel agent tools) on demand.
+   * Uses JSON-based tool calling protocol for providers without native tool support.
+   *
+   * @param prompt - The prompt text to send to LLM
+   * @param tools - Array of tool definitions the LLM can call
+   * @param options - LLM invocation options (temperature, maxTokens, etc.)
+   * @returns LLM response with content (after tool execution if requested)
+   * @throws Error if LLM service unavailable or request fails
+   */
+  invokeWithTools(
+    prompt: string,
+    tools: ToolDefinition[],
+    options?: LLMOptions
+  ): Promise<LLMResponse>;
 
   /**
    * Check if LLM service is available.
@@ -100,6 +137,106 @@ class OllamaClient implements LLMClient {
         totalTokens: (data.prompt_eval_count || 0) + (data.eval_count || 0),
       },
     };
+  }
+
+  async invokeWithTools(
+    prompt: string,
+    tools: ToolDefinition[],
+    options?: LLMOptions
+  ): Promise<LLMResponse> {
+    // Build tool-aware prompt with JSON protocol
+    const toolDescriptions = tools.map(t => 
+      `- ${t.name}: ${t.description}`
+    ).join('\n');
+
+    const toolAwarePrompt = `${prompt}
+
+AVAILABLE TOOLS:
+${toolDescriptions}
+
+TOOL CALLING PROTOCOL:
+If you need to call a tool to answer the question, respond with ONLY a JSON object in this exact format:
+{"tool": "<tool_name>", "arguments": {<args>}}
+
+If you don't need a tool, respond normally in natural language.
+
+Your response:`;
+
+    // First LLM call: check if tool is needed
+    const firstResponse = await this.invoke(toolAwarePrompt, options);
+    
+    // Try to parse as tool call
+    const toolCall = this.parseToolCall(firstResponse.content);
+    
+    if (!toolCall) {
+      // No tool call - return natural language response
+      return firstResponse;
+    }
+
+    // Execute the requested tool
+    const tool = tools.find(t => t.name === toolCall.toolName);
+    if (!tool) {
+      // Tool not found - return error message
+      return {
+        content: `Error: Tool '${toolCall.toolName}' not found. Available tools: ${tools.map(t => t.name).join(', ')}`,
+        usage: firstResponse.usage,
+      };
+    }
+
+    let toolResult: string;
+    try {
+      toolResult = await tool.invoke(toolCall.arguments);
+    } catch (error) {
+      toolResult = `Error executing tool: ${error instanceof Error ? error.message : String(error)}`;
+    }
+
+    // Second LLM call: generate final answer using tool result
+    const finalPrompt = `${prompt}
+
+I called the tool '${toolCall.toolName}' with arguments: ${JSON.stringify(toolCall.arguments)}
+
+The tool returned this result:
+${toolResult}
+
+Using this information, please answer the user's question in natural language:`;
+
+    const finalResponse = await this.invoke(finalPrompt, options);
+    
+    return {
+      content: finalResponse.content,
+      usage: finalResponse.usage,
+      toolCalls: [{
+        toolName: toolCall.toolName,
+        arguments: toolCall.arguments,
+      }],
+    };
+  }
+
+  /**
+   * Parse LLM response to detect tool call requests.
+   * 
+   * @param content - LLM response content
+   * @returns Parsed tool call or null if not a tool call
+   */
+  private parseToolCall(content: string): { toolName: string; arguments: Record<string, unknown> } | null {
+    try {
+      // Try to extract JSON from response (handle cases where LLM adds extra text)
+      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) return null;
+
+      const parsed = JSON.parse(jsonMatch[0]);
+      
+      if (parsed.tool && typeof parsed.tool === 'string') {
+        return {
+          toolName: parsed.tool,
+          arguments: parsed.arguments || {},
+        };
+      }
+      
+      return null;
+    } catch {
+      return null;
+    }
   }
 
   async isAvailable(): Promise<boolean> {
@@ -162,6 +299,106 @@ class LLMstudioClient implements LLMClient {
     };
   }
 
+  async invokeWithTools(
+    prompt: string,
+    tools: ToolDefinition[],
+    options?: LLMOptions
+  ): Promise<LLMResponse> {
+    // Build tool-aware prompt with JSON protocol
+    const toolDescriptions = tools.map(t => 
+      `- ${t.name}: ${t.description}`
+    ).join('\n');
+
+    const toolAwarePrompt = `${prompt}
+
+AVAILABLE TOOLS:
+${toolDescriptions}
+
+TOOL CALLING PROTOCOL:
+If you need to call a tool to answer the question, respond with ONLY a JSON object in this exact format:
+{"tool": "<tool_name>", "arguments": {<args>}}
+
+If you don't need a tool, respond normally in natural language.
+
+Your response:`;
+
+    // First LLM call: check if tool is needed
+    const firstResponse = await this.invoke(toolAwarePrompt, options);
+    
+    // Try to parse as tool call
+    const toolCall = this.parseToolCall(firstResponse.content);
+    
+    if (!toolCall) {
+      // No tool call - return natural language response
+      return firstResponse;
+    }
+
+    // Execute the requested tool
+    const tool = tools.find(t => t.name === toolCall.toolName);
+    if (!tool) {
+      // Tool not found - return error message
+      return {
+        content: `Error: Tool '${toolCall.toolName}' not found. Available tools: ${tools.map(t => t.name).join(', ')}`,
+        usage: firstResponse.usage,
+      };
+    }
+
+    let toolResult: string;
+    try {
+      toolResult = await tool.invoke(toolCall.arguments);
+    } catch (error) {
+      toolResult = `Error executing tool: ${error instanceof Error ? error.message : String(error)}`;
+    }
+
+    // Second LLM call: generate final answer using tool result
+    const finalPrompt = `${prompt}
+
+I called the tool '${toolCall.toolName}' with arguments: ${JSON.stringify(toolCall.arguments)}
+
+The tool returned this result:
+${toolResult}
+
+Using this information, please answer the user's question in natural language:`;
+
+    const finalResponse = await this.invoke(finalPrompt, options);
+    
+    return {
+      content: finalResponse.content,
+      usage: finalResponse.usage,
+      toolCalls: [{
+        toolName: toolCall.toolName,
+        arguments: toolCall.arguments,
+      }],
+    };
+  }
+
+  /**
+   * Parse LLM response to detect tool call requests.
+   * 
+   * @param content - LLM response content
+   * @returns Parsed tool call or null if not a tool call
+   */
+  private parseToolCall(content: string): { toolName: string; arguments: Record<string, unknown> } | null {
+    try {
+      // Try to extract JSON from response (handle cases where LLM adds extra text)
+      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) return null;
+
+      const parsed = JSON.parse(jsonMatch[0]);
+      
+      if (parsed.tool && typeof parsed.tool === 'string') {
+        return {
+          toolName: parsed.tool,
+          arguments: parsed.arguments || {},
+        };
+      }
+      
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
   async isAvailable(): Promise<boolean> {
     try {
       // LLMstudio typically has a /v1/models endpoint for health checks
@@ -180,6 +417,10 @@ class LLMstudioClient implements LLMClient {
  */
 class NoOpLLMClient implements LLMClient {
   async invoke(): Promise<LLMResponse> {
+    throw new Error("LLM not configured - use rules-based fallback");
+  }
+
+  async invokeWithTools(): Promise<LLMResponse> {
     throw new Error("LLM not configured - use rules-based fallback");
   }
 
