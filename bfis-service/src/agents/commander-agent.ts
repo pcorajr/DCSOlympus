@@ -104,6 +104,28 @@ export class CommanderAgent {
       // Validate decision
       this.validateDecision(decision);
 
+      // CRITICAL SAFETY: Enforce hostilities constraint (FR-010)
+      // Strip ATTACK actions if hostilities have not started
+      // This is a hard guard that prevents LLM misbehavior from violating the constraint
+      if (!input.missionContext.hostilitiesStarted) {
+        const attackActions = decision.actions.filter(a => a.type === "ATTACK");
+        if (attackActions.length > 0) {
+          this.logger.warn("bfis-commander-hostility-violation", {
+            decisionId: decision.decisionId,
+            snapshotId,
+            attackActionsRemoved: attackActions.length,
+            originalActionCount: decision.actions.length,
+            message: "LLM generated ATTACK actions before hostilities started - actions removed",
+          });
+          
+          // Remove ATTACK actions
+          decision.actions = decision.actions.filter(a => a.type !== "ATTACK");
+          
+          // Update reasoning to reflect the constraint enforcement
+          decision.reasoningNotes = `${decision.reasoningNotes}\n\nNOTE: ${attackActions.length} ATTACK action(s) were removed because hostilities have not started yet.`;
+        }
+      }
+
       // Enrich decision with metadata
       decision.snapshotId = input.intelSummary.snapshotId;
       decision.missionId = input.missionContext.missionId;
