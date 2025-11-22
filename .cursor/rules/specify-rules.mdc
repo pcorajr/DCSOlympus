@@ -6,6 +6,8 @@ Auto-generated from all feature plans. Last updated: 2025-11-16
 - In-memory only (no persistent storage). Context snapshots are ephemeral, created on-demand during polling cycles. (002-context-snapshot)
 - TypeScript 5.8.2, Node.js 20 (ES2023 target, NodeNext module resolution) + None (uses existing BFIS infrastructure: `SnapshotReader`, `structured-logger`, `shared-schemas`) (003-hostility-awareness)
 - In-memory only (no persistence - state maintained in `HostilityDetector` instance, lost on service restart) (003-hostility-awareness)
+- TypeScript 5.8.2 (strict mode required per constitution) (004-bfis-llm-architecture)
+- In-memory only (no persistent storage for MVP) (004-bfis-llm-architecture)
 
 - TypeScript 5.8.2 / Node.js 20+ (ES2023, NodeNext module resolution) (001-bfis-snapshot-decoders)
 
@@ -28,10 +30,10 @@ Always Test by using the docker container.
 TypeScript 5.8.2 / Node.js 20+ (ES2023, NodeNext module resolution): Follow standard conventions
 
 ## Recent Changes
+- 004-bfis-llm-architecture: Added TypeScript 5.8.2 (strict mode required per constitution)
 - 003-hostility-awareness: Added TypeScript 5.8.2, Node.js 20 (ES2023 target, NodeNext module resolution) + None (uses existing BFIS infrastructure: `SnapshotReader`, `structured-logger`, `shared-schemas`)
 - 002-context-snapshot: Added TypeScript 5.8.2 / Node.js 20+ (ES2023, NodeNext module resolution)
 
-- 001-bfis-snapshot-decoders: Added TypeScript 5.8.2 / Node.js 20+ (ES2023, NodeNext module resolution)
 
 <!-- MANUAL ADDITIONS START -->
 Do not make use of emojis in at any time on any file.

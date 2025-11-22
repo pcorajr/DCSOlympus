@@ -219,7 +219,7 @@ export interface CommandResult {
   /** Hash or identifier used to correlate with Olympus command tracking. */
   commandHash: string;
   /** Lifecycle status of this command from BFIS' perspective. */
-  status: "PENDING" | "SENT" | "CONFIRMED" | "FAILED";
+  status: "PENDING" | "SENT" | "CONFIRMED" | "FAILED" | "LOGGED";
   /** Optional error message when status is FAILED. */
   error?: string;
 }
