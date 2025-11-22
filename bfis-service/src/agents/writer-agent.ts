@@ -413,6 +413,8 @@ export class WriterAgent {
   /**
    * Execute or log command based on configuration.
    *
+   * Per FR-017: Commands are retried once on failure (2 total attempts).
+   *
    * @param command - Command to execute or log
    * @param action - Original action for context
    * @returns Command result with hash and status
@@ -438,8 +440,55 @@ export class WriterAgent {
       };
     }
 
-    // Execute mode: send command to Olympus
-    return await this.sendCommandToOlympus(command);
+    // Execute mode: send command to Olympus with retry logic (FR-017)
+    // Initial attempt + one retry = 2 total attempts
+    const maxAttempts = 2;
+    let lastError: Error | null = null;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        const result = await this.sendCommandToOlympus(command);
+        
+        // Success - log if this was a retry
+        if (attempt > 1) {
+          this.logger.info("bfis-writer-command-retry-success", {
+            commandName: command.name,
+            attempt,
+            totalAttempts: maxAttempts,
+            commandHash: result.commandHash,
+          });
+        }
+        
+        return result;
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+        
+        if (attempt < maxAttempts) {
+          // Log retry attempt
+          this.logger.warn("bfis-writer-command-retry", {
+            commandName: command.name,
+            attempt,
+            totalAttempts: maxAttempts,
+            error: lastError.message,
+            willRetry: true,
+          });
+        } else {
+          // Final attempt failed
+          this.logger.error("bfis-writer-command-failed-final", {
+            commandName: command.name,
+            attempts: maxAttempts,
+            error: lastError.message,
+          });
+        }
+      }
+    }
+
+    // All attempts failed - return FAILED status
+    return {
+      commandHash: uuidv4(),
+      status: "FAILED",
+      error: lastError?.message || "Command execution failed after retries",
+    };
   }
 
   /**
