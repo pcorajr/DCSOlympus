@@ -160,8 +160,10 @@ export class PollingLoop {
 
       this.lastSessionHash = snapshot.base.sessionHash;
 
-      // Run orchestrator cycle if configured
-      if (this.orchestrator) {
+      // Run orchestrator cycle if configured AND enabled via triggerOrchestrator flag
+      // Per Spec-005: Default to human-in-the-loop mode (triggerOrchestrator=false)
+      // to prevent autonomous "action-happy" behavior
+      if (this.orchestrator && this.config.polling.triggerOrchestrator) {
         // Skip decision cycles if there are no units in the battlefield
         const totalUnits = snapshot.base.units.length;
         if (totalUnits === 0) {
@@ -231,11 +233,15 @@ export class PollingLoop {
           });
         }
       } else {
-        // No orchestrator - just log snapshot received
+        // No orchestrator or autonomous mode disabled - just log snapshot received
+        // This is the default behavior per Spec-005 (human-in-the-loop)
         this.logger.debug("bfis-snapshot-received", {
           snapshotId: snapshot.base.snapshotId,
           unitCount: snapshot.base.units.length,
+          autonomousModeEnabled: this.config.polling.triggerOrchestrator,
         });
+        // Still update previous snapshot for Intel tool queries
+        this.previousSnapshot = snapshot;
       }
     } catch (err) {
       // Log error but continue polling (retry on next tick)
