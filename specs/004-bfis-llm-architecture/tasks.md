@@ -25,7 +25,7 @@
 
 **Purpose**: Project initialization, dependency installation, and configuration setup
 
-- [ ] T001 Install LangGraph and LangChain dependencies in `bfis-service/package.json`
+- [X] T001 Install LangGraph and LangChain dependencies in `bfis-service/package.json`
 
   **Code snippet to guide implementation:**
   ```json
@@ -43,7 +43,7 @@
   ```
   Run: `cd bfis-service && npm install`
 
-- [ ] T002 [P] Create agent directory structure in `bfis-service/src/agents/`
+- [X] T002 [P] Create agent directory structure in `bfis-service/src/agents/`
 
   **Code snippet to guide implementation:**
   ```bash
@@ -59,7 +59,7 @@
   - `bfis-service/src/agents/tools/snapshot-tools.ts`
   - `bfis-service/src/agents/tools/index.ts`
 
-- [ ] T003 [P] Extend BfisConfig interface with AgentConfig in `bfis-service/src/config/config.ts`
+- [X] T003 [P] Extend BfisConfig interface with AgentConfig in `bfis-service/src/config/config.ts`
 
   **Code snippet to guide implementation:**
   ```typescript
@@ -102,7 +102,7 @@
   }
   ```
 
-- [ ] T004 [P] Add agent configuration resolution functions in `bfis-service/src/config/config.ts`
+- [X] T004 [P] Add agent configuration resolution functions in `bfis-service/src/config/config.ts`
 
   **Code snippet to guide implementation:**
   ```typescript
@@ -157,7 +157,7 @@
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T005 Verify types.ts exists and contains all required interfaces in `bfis-service/src/agents/types.ts`
+- [X] T005 Verify types.ts exists and contains all required interfaces in `bfis-service/src/agents/types.ts`
 
   **Code snippet to guide verification:**
   ```typescript
@@ -175,7 +175,7 @@
   // If any are missing, add them based on data-model.md specifications
   ```
 
-- [ ] T006 [P] Create LLM client abstraction interface in `bfis-service/src/intent/llm-client.ts`
+- [X] T006 [P] Create LLM client abstraction interface in `bfis-service/src/intent/llm-client.ts`
 
   **Code snippet to guide implementation:**
   ```typescript
@@ -232,7 +232,7 @@
   }
   ```
 
-- [ ] T007 [P] Create rules-based fallback module in `bfis-service/src/agents/rules-fallback.ts`
+- [X] T007 [P] Create rules-based fallback module in `bfis-service/src/agents/rules-fallback.ts`
 
   **Code snippet to guide implementation:**
   ```typescript

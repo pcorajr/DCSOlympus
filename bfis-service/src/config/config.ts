@@ -79,6 +79,38 @@ export interface LlmConfig {
 }
 
 /**
+ * Agent-specific configuration for multi-agent LLM architecture.
+ *
+ * Extends base BfisConfig with agent-specific settings for Intel, Commander, Writer, and Orchestrator.
+ */
+export interface AgentConfig {
+  intel: {
+    pollingIntervalMs: number; // Default: 2000
+    enableChangeDetection: boolean; // Default: true
+    positionChangeThresholdMeters: number; // Default: 1000
+    maxTokens: number; // Default: 2000
+    temperature: number; // Default: 0.3
+  };
+  commander: {
+    maxTokens: number; // Default: 4000
+    temperature: number; // Default: 0.7
+    enableRulesFallback: boolean; // Default: true
+    maxActionsPerDecision: number; // Default: 10
+  };
+  writer: {
+    maxTokens: number; // Default: 2000
+    temperature: number; // Default: 0.2
+    enableCommandValidation: boolean; // Default: true
+    commandExecutionMode: "log" | "execute"; // Default: "log"
+  };
+  orchestrator: {
+    enableCheckpointing: boolean; // Default: false
+    maxCycles: number; // Default: 10
+    cycleTimeoutMs: number; // Default: 30000
+  };
+}
+
+/**
  * Complete BFIS service configuration.
  *
  * This is the single source of truth for all runtime configuration.
@@ -95,6 +127,8 @@ export interface BfisConfig {
   polling: PollingConfig;
   ndjsonLogPath: string;
   llm: LlmConfig;
+  /** Agent-specific configuration for multi-agent LLM architecture. */
+  agents?: AgentConfig;
 }
 
 /**
@@ -313,6 +347,40 @@ function resolveLlmConfig(): LlmConfig {
 }
 
 /**
+ * Resolve agent configuration with defaults.
+ *
+ * @returns Agent configuration with all defaults applied
+ */
+function resolveAgentConfig(): AgentConfig {
+  return {
+    intel: {
+      pollingIntervalMs: Number(process.env.BFIS_AGENT_INTEL_POLLING_MS ?? 2000),
+      enableChangeDetection: process.env.BFIS_AGENT_INTEL_CHANGE_DETECTION !== "false",
+      positionChangeThresholdMeters: Number(process.env.BFIS_AGENT_INTEL_POSITION_THRESHOLD_M ?? 1000),
+      maxTokens: Number(process.env.BFIS_AGENT_INTEL_MAX_TOKENS ?? 2000),
+      temperature: Number(process.env.BFIS_AGENT_INTEL_TEMPERATURE ?? 0.3),
+    },
+    commander: {
+      maxTokens: Number(process.env.BFIS_AGENT_COMMANDER_MAX_TOKENS ?? 4000),
+      temperature: Number(process.env.BFIS_AGENT_COMMANDER_TEMPERATURE ?? 0.7),
+      enableRulesFallback: process.env.BFIS_AGENT_COMMANDER_RULES_FALLBACK !== "false",
+      maxActionsPerDecision: Number(process.env.BFIS_AGENT_COMMANDER_MAX_ACTIONS ?? 10),
+    },
+    writer: {
+      maxTokens: Number(process.env.BFIS_AGENT_WRITER_MAX_TOKENS ?? 2000),
+      temperature: Number(process.env.BFIS_AGENT_WRITER_TEMPERATURE ?? 0.2),
+      enableCommandValidation: process.env.BFIS_AGENT_WRITER_VALIDATION !== "false",
+      commandExecutionMode: (process.env.BFIS_COMMAND_EXECUTION_MODE ?? "log") as "log" | "execute",
+    },
+    orchestrator: {
+      enableCheckpointing: process.env.BFIS_ORCHESTRATOR_CHECKPOINTING === "true",
+      maxCycles: Number(process.env.BFIS_ORCHESTRATOR_MAX_CYCLES ?? 10),
+      cycleTimeoutMs: Number(process.env.BFIS_ORCHESTRATOR_TIMEOUT_MS ?? 30000),
+    },
+  };
+}
+
+/**
  * Load and return the full BFIS configuration.
  *
  * This function is safe to call multiple times; environment loading happens once
@@ -339,5 +407,6 @@ export function loadConfig(): BfisConfig {
     polling: resolvePollingConfig(),
     ndjsonLogPath: process.env.BFIS_NDJSON_LOG_PATH ?? "logs/bfis-decisions.ndjson",
     llm: resolveLlmConfig(),
+    agents: resolveAgentConfig(),
   };
 }

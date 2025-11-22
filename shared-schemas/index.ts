@@ -243,3 +243,85 @@ export interface OlympusSnapshot {
   /** Optional derived events from logs or snapshot diffing (MVP: optional) */
   events?: OlympusEvent[];
 }
+
+/**
+ * Type-safe action type for BFIS decisions.
+ *
+ * Represents the high-level action types that BFIS can produce.
+ */
+export type BfisActionType = "SPAWN" | "MOVE" | "ATTACK" | "RTB" | "HOLD" | "CUSTOM";
+
+/**
+ * Target specification for a BFIS action.
+ *
+ * Actions can target units, groups, coordinates, or zones.
+ */
+export interface BfisActionTarget {
+  /** Target unit ID (optional). */
+  unitId?: string;
+  /** Target group ID (optional). */
+  groupId?: string;
+  /** Target coordinate reference (optional). */
+  coordinateRef?: { lat: number; lon: number; altMeters?: number };
+  /** Target zone ID (optional). */
+  zoneId?: string;
+}
+
+/**
+ * Parameters for a BFIS action.
+ *
+ * Action-specific parameters vary by action type.
+ */
+export interface BfisActionParams {
+  unitType?: string;
+  count?: number;
+  speedKts?: number;
+  altitudeMeters?: number;
+  waypointId?: string;
+  notes?: string;
+  coalition?: OlympusCoalition;
+  category?: string;
+  path?: Array<{ lat: number; lon: number; altMeters?: number }>;
+  weaponType?: string;
+  [key: string]: unknown;
+}
+
+/**
+ * Represents a single action in a BFIS decision.
+ *
+ * Actions are high-level tactical commands that will be translated
+ * into concrete Olympus commands by the Writer agent.
+ */
+export interface BfisAction {
+  /** Action type (SPAWN, MOVE, ATTACK, etc.). */
+  type: BfisActionType;
+  /** Action target (unit, group, coordinate, or zone). */
+  target: BfisActionTarget;
+  /** Action-specific parameters. */
+  params?: BfisActionParams;
+}
+
+/**
+ * Represents a tactical decision made by BFIS.
+ *
+ * Decisions contain one or more actions with reasoning notes explaining
+ * why those actions were chosen. This is the output of the Commander agent.
+ */
+export interface BfisDecision {
+  /** Unique decision identifier (UUID v4). */
+  decisionId: string;
+  /** Snapshot ID this decision is based on. */
+  snapshotId?: string;
+  /** Mission ID this decision applies to. */
+  missionId?: string;
+  /** Server ID this decision applies to. */
+  serverId?: string;
+  /** LLM model used (if LLM-driven decision). */
+  model?: string;
+  /** Reasoning notes explaining why these actions were chosen. */
+  reasoningNotes?: string;
+  /** List of actions to execute. */
+  actions: BfisAction[];
+  /** ISO 8601 timestamp when decision was made. */
+  timestamp?: string;
+}
