@@ -113,6 +113,67 @@ class OllamaClient implements LLMClient {
 }
 
 /**
+ * LLMstudio LLM client implementation.
+ *
+ * LLMstudio uses OpenAI-compatible API endpoints.
+ */
+class LLMstudioClient implements LLMClient {
+  constructor(
+    private readonly baseUrl: string,
+    private readonly model: string
+  ) {}
+
+  async invoke(prompt: string, options?: LLMOptions): Promise<LLMResponse> {
+    const response = await fetch(`${this.baseUrl}/v1/chat/completions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: this.model,
+        messages: [
+          {
+            role: "user",
+            content: prompt,
+          },
+        ],
+        temperature: options?.temperature ?? 0.7,
+        max_tokens: options?.maxTokens,
+        stop: options?.stopSequences,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`LLMstudio API error: ${response.statusText} - ${errorText}`);
+    }
+
+    const data = await response.json();
+    
+    if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+      throw new Error(`Invalid LLMstudio response: missing 'choices[0].message' field`);
+    }
+    
+    return {
+      content: data.choices[0].message.content || "",
+      usage: data.usage ? {
+        promptTokens: data.usage.prompt_tokens,
+        completionTokens: data.usage.completion_tokens,
+        totalTokens: data.usage.total_tokens,
+      } : undefined,
+    };
+  }
+
+  async isAvailable(): Promise<boolean> {
+    try {
+      // LLMstudio typically has a /v1/models endpoint for health checks
+      const response = await fetch(`${this.baseUrl}/v1/models`, { method: "GET" });
+      return response.ok;
+    } catch {
+      return false;
+    }
+  }
+}
+
+/**
  * No-op LLM client for rules-only mode.
  *
  * Throws error on invoke() to force fallback to rules-based decision-making.
@@ -144,12 +205,8 @@ export function createLLMClient(config: BfisConfig): LLMClient {
     return new OllamaClient(config.llm.baseUrl, config.llm.model);
   }
 
-  // LLMstudio implementation follows same pattern as Ollama but uses different API endpoint
-  // For MVP, prioritize Ollama; LLMstudio can be added as extension if needed
   if (config.llm.provider === "llmstudio") {
-    // TODO: Implement LLMstudio client when needed
-    // Similar to OllamaClient but with LLMstudio-specific API endpoint
-    throw new Error("LLMstudio provider not yet implemented - use Ollama for MVP");
+    return new LLMstudioClient(config.llm.baseUrl, config.llm.model);
   }
 
   throw new Error(`Unsupported LLM provider: ${config.llm.provider}`);

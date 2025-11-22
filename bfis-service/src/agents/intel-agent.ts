@@ -46,6 +46,15 @@ export class IntelAgent {
     previousSnapshot: BfisContextSnapshot | null
   ): Promise<IntelAgentOutput> {
     const startTime = Date.now();
+    const snapshotId = currentSnapshot.base.snapshotId;
+
+    this.logger.debug("bfis-intel-process-start", {
+      snapshotId,
+      unitCount: currentSnapshot.base.units.length,
+      hasPreviousSnapshot: previousSnapshot !== null,
+      previousSnapshotId: previousSnapshot?.base.snapshotId || null,
+      timestamp: new Date().toISOString(),
+    });
 
     try {
       // Detect session hash change (mission reset)
@@ -53,13 +62,23 @@ export class IntelAgent {
         this.logger.info("bfis-intel-session-reset", {
           oldSessionHash: previousSnapshot.base.sessionHash,
           newSessionHash: currentSnapshot.base.sessionHash,
+          snapshotId,
         });
         // Treat as first observation (no previous snapshot for change detection)
         previousSnapshot = null;
       }
 
       // Generate tactical summary
+      const summaryStartTime = Date.now();
       const summary = await this.generateSummary(currentSnapshot);
+      const summaryDuration = Date.now() - summaryStartTime;
+      
+      this.logger.debug("bfis-intel-summary-complete", {
+        snapshotId,
+        durationMs: summaryDuration,
+        totalUnits: Object.values(summary.unitCounts).reduce((a, b) => a + b, 0),
+        threatCount: summary.threats.length,
+      });
 
       // Log summary generation
       this.logger.info("bfis-intel-summary-generated", {
@@ -72,7 +91,40 @@ export class IntelAgent {
         generationTimeMs: Date.now() - startTime,
       });
 
-      const changes = previousSnapshot ? await this.detectChanges(currentSnapshot, previousSnapshot) : undefined;
+      // Detect changes if previous snapshot available
+      let changes: SnapshotDelta | undefined = undefined;
+      let changesDuration = 0;
+      if (previousSnapshot) {
+        const changesStartTime = Date.now();
+        const detectedChanges = await this.detectChanges(currentSnapshot, previousSnapshot);
+        changesDuration = Date.now() - changesStartTime;
+        changes = detectedChanges || undefined; // Convert null to undefined
+        
+        if (changes) {
+          this.logger.debug("bfis-intel-changes-complete", {
+            snapshotId,
+            durationMs: changesDuration,
+            newUnits: changes.newUnits.length,
+            destroyedUnits: changes.destroyedUnits.length,
+            movedUnits: changes.movedUnits.length,
+            hostilityChanged: changes.hostilityChanged,
+          });
+        }
+      } else {
+        this.logger.debug("bfis-intel-changes-skipped", {
+          snapshotId,
+          reason: "No previous snapshot available",
+        });
+      }
+      
+      const totalDuration = Date.now() - startTime;
+      this.logger.debug("bfis-intel-process-complete", {
+        snapshotId,
+        totalDurationMs: totalDuration,
+        summaryDurationMs: summaryDuration,
+        changesDurationMs: changesDuration,
+        timestamp: new Date().toISOString(),
+      });
       
       return {
         summary,

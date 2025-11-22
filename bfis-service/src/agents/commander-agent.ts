@@ -48,20 +48,58 @@ export class CommanderAgent {
    */
   async makeDecision(input: CommanderAgentInput): Promise<BfisDecision> {
     const startTime = Date.now();
+    const snapshotId = input.intelSummary.snapshotId;
+
+    this.logger.debug("bfis-commander-decision-start", {
+      snapshotId,
+      unitCount: Object.values(input.intelSummary.unitCounts).reduce((a, b) => a + b, 0),
+      hasChanges: input.changes !== undefined,
+      hasPreviousDecision: input.previousDecision !== null,
+      timestamp: new Date().toISOString(),
+    });
 
     try {
       // Check if LLM is available
+      const llmCheckStartTime = Date.now();
       const llmAvailable = await this.llmClient.isAvailable();
+      const llmCheckDuration = Date.now() - llmCheckStartTime;
+      
+      this.logger.debug("bfis-commander-llm-check", {
+        snapshotId,
+        available: llmAvailable,
+        durationMs: llmCheckDuration,
+      });
 
       if (!llmAvailable && this.enableRulesFallback) {
         this.logger.warn("bfis-commander-llm-unavailable", {
           message: "LLM unavailable, using rules-based fallback",
+          snapshotId,
         });
-        return this.makeRulesBasedDecision(input);
+        const rulesStartTime = Date.now();
+        const decision = await this.makeRulesBasedDecision(input);
+        const rulesDuration = Date.now() - rulesStartTime;
+        
+        this.logger.debug("bfis-commander-rules-decision-complete", {
+          snapshotId,
+          decisionId: decision.decisionId,
+          actionCount: decision.actions.length,
+          durationMs: rulesDuration,
+        });
+        
+        return decision;
       }
 
       // Generate decision using LLM
+      const llmStartTime = Date.now();
       const decision = await this.generateLLMDecision(input);
+      const llmDuration = Date.now() - llmStartTime;
+      
+      this.logger.debug("bfis-commander-llm-decision-complete", {
+        snapshotId,
+        decisionId: decision.decisionId,
+        actionCount: decision.actions.length,
+        durationMs: llmDuration,
+      });
 
       // Validate decision
       this.validateDecision(decision);
@@ -72,7 +110,8 @@ export class CommanderAgent {
       decision.serverId = input.missionContext.serverId;
       decision.model = this.config.llm.model;
 
-      // Log decision with full reasoning
+      // Log decision with full reasoning and performance metrics
+      const totalDuration = Date.now() - startTime;
       this.logger.info("bfis-commander-decision-made", {
         decisionId: decision.decisionId,
         snapshotId: input.intelSummary.snapshotId,
@@ -81,8 +120,13 @@ export class CommanderAgent {
         reasoningLength: decision.reasoningNotes?.length ?? 0,
         reasoningNotes: decision.reasoningNotes, // Full reasoning text
         actions: decision.actions, // Full actions with all details
-        generationTimeMs: Date.now() - startTime,
+        generationTimeMs: totalDuration,
+        phaseDurations: {
+          llmCheck: llmCheckDuration,
+          llmGeneration: llmDuration,
+        },
         usedFallback: false,
+        timestamp: new Date().toISOString(),
       });
 
       return decision;
@@ -172,11 +216,12 @@ export class CommanderAgent {
    * @returns Prompt string for LLM
    */
   private buildPrompt(input: CommanderAgentInput): string {
+    // Build detailed changes text
     const changesText = input.changes
       ? `Recent Changes:
-- New Units: ${input.changes.newUnits.length}
-- Destroyed Units: ${input.changes.destroyedUnits.length}
-- Moved Units: ${input.changes.movedUnits.length}
+- New Units (${input.changes.newUnits.length}): ${input.changes.newUnits.map(u => `${u.unitId} (${u.coalition} ${u.category})`).join(", ") || "None"}
+- Destroyed Units (${input.changes.destroyedUnits.length}): ${input.changes.destroyedUnits.map(u => `${u.unitId} (${u.coalition})`).join(", ") || "None"}
+- Moved Units (${input.changes.movedUnits.length}): ${input.changes.movedUnits.map(u => `${u.unitId}: (${u.oldPosition.lat.toFixed(4)}, ${u.oldPosition.lon.toFixed(4)}) → (${u.newPosition.lat.toFixed(4)}, ${u.newPosition.lon.toFixed(4)})`).join("; ") || "None"}
 - Hostility Changed: ${input.changes.hostilityChanged}`
       : "";
 
@@ -184,12 +229,30 @@ export class CommanderAgent {
       ? `Previous Decision:
 - Decision ID: ${input.previousDecision.decisionId}
 - Actions: ${input.previousDecision.actions.length}
-- Reasoning: ${input.previousDecision.reasoningNotes?.substring(0, 200)}...`
+- Action Types: ${input.previousDecision.actions.map(a => a.type).join(", ")}
+- Reasoning: ${input.previousDecision.reasoningNotes?.substring(0, 300)}...`
       : "";
 
     const playerIntentText = input.playerIntent ? `Player Intent: ${input.playerIntent}` : "";
 
-    return `You are a tactical commander analyzing battlefield intelligence.
+    // Build detailed key positions text
+    const keyPositionsText = input.intelSummary.keyPositions.length > 0
+      ? `Key Positions:
+${input.intelSummary.keyPositions.map(p => `- ${p.type.toUpperCase()}${p.coalition ? ` (${p.coalition})` : ""}${p.label ? ` "${p.label}"` : ""}: (${p.position.lat.toFixed(4)}, ${p.position.lon.toFixed(4)}${p.position.altMeters ? `, ${p.position.altMeters}m` : ""})`).join("\n")}`
+      : "Key Positions: None";
+
+    // Build detailed threats text
+    const threatsText = input.intelSummary.threats.length > 0
+      ? `Threats:
+${input.intelSummary.threats.map(t => `- ${t.coalition} [${t.severity.toUpperCase()}]: ${t.description}`).join("\n")}`
+      : "Threats: None";
+
+    // Build category breakdown
+    const categoryBreakdown = Object.entries(input.intelSummary.categoryCounts)
+      .map(([cat, count]) => `  - ${cat}: ${count}`)
+      .join("\n");
+
+    return `You are a tactical commander analyzing battlefield intelligence. Your role is to make strategic decisions based on the current battlefield state.
 
 Mission Context:
 - Mission ID: ${input.missionContext.missionId}
@@ -197,11 +260,20 @@ Mission Context:
 - Hostilities Started: ${input.missionContext.hostilitiesStarted}
 - Current Time: ${input.missionContext.time}
 
-Battlefield Summary:
-- Unit Counts: BLUE=${input.intelSummary.unitCounts.BLUE}, RED=${input.intelSummary.unitCounts.RED}, NEUTRAL=${input.intelSummary.unitCounts.NEUTRAL}, UNKNOWN=${input.intelSummary.unitCounts.UNKNOWN}
-- Category Counts: ${JSON.stringify(input.intelSummary.categoryCounts)}
-- Key Positions: ${input.intelSummary.keyPositions.length}
-- Threats: ${input.intelSummary.threats.map((t) => `${t.coalition} (${t.severity}): ${t.description}`).join(", ") || "None"}
+Battlefield Overview:
+- Unit Counts by Coalition:
+  - BLUE: ${input.intelSummary.unitCounts.BLUE}
+  - RED: ${input.intelSummary.unitCounts.RED}
+  - NEUTRAL: ${input.intelSummary.unitCounts.NEUTRAL}
+  - UNKNOWN: ${input.intelSummary.unitCounts.UNKNOWN}
+  - TOTAL: ${Object.values(input.intelSummary.unitCounts).reduce((a, b) => a + b, 0)}
+
+- Unit Counts by Category:
+${categoryBreakdown || "  - No units detected"}
+
+${keyPositionsText}
+
+${threatsText}
 
 ${changesText}
 
@@ -209,12 +281,15 @@ ${previousDecisionText}
 
 ${playerIntentText}
 
-Constraints:
+Decision Constraints:
 - Maximum ${this.maxActionsPerDecision} actions per decision
-- ${input.missionContext.hostilitiesStarted ? "Hostilities have started - attacks allowed" : "Hostilities NOT started - NO attacks allowed, only spawn/move actions"}
+- ${input.missionContext.hostilitiesStarted ? "Hostilities have started - ATTACK actions are allowed" : "Hostilities NOT started - NO ATTACK actions allowed. Only SPAWN, MOVE, RTB, HOLD, or CUSTOM actions are permitted"}
 - Actions must be valid BfisAction types: SPAWN, MOVE, ATTACK, RTB, HOLD, CUSTOM
 - Each action must have a valid target (unitId, groupId, coordinateRef, or zoneId)
 - Actions should be tactical and strategic, not micro-management
+- If there are no units in the battlefield, you may choose to spawn initial units or wait
+- Consider the key positions (airbases, bullseyes) when planning spawn locations
+- Use actual coordinates from key positions when available
 
 Generate a tactical decision as JSON with this exact structure:
 {

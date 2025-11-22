@@ -215,6 +215,7 @@ function resolvePollingConfig() {
         airbasesMs: Number(process.env.BFIS_POLL_AIRBASES_MS ?? 10000),
         bullseyesMs: Number(process.env.BFIS_POLL_BULLSEYES_MS ?? 10000),
         spotsMs: Number(process.env.BFIS_POLL_SPOTS_MS ?? 2000),
+        decisionCycleIntervalMs: Number(process.env.BFIS_DECISION_CYCLE_INTERVAL_MS ?? 10000), // 10 seconds default
     };
 }
 /**
@@ -223,16 +224,16 @@ function resolvePollingConfig() {
  * If provider is "none", BFIS operates in rules-based mode only.
  * Empty strings for baseUrl/model indicate LLM is not configured.
  *
- * Defaults to remote Ollama instance at 192.168.1.2:11434 with gpt-oss:20b model.
+ * Defaults to LLMstudio instance at http://192.168.1.2:1234/v1 with gpt-oss:20b model.
  * Can be overridden via environment variables.
  *
  * @returns LLM configuration
  */
 function resolveLlmConfig() {
     return {
-        provider: process.env.BFIS_LLM_PROVIDER ?? "ollama",
-        baseUrl: process.env.BFIS_LLM_BASE_URL ?? "http://192.168.1.2:11434",
-        model: process.env.BFIS_LLM_MODEL ?? "gpt-oss:20b",
+        provider: process.env.BFIS_LLM_PROVIDER ?? "llmstudio",
+        baseUrl: process.env.BFIS_LLM_BASE_URL ?? "http://192.168.1.2:1234",
+        model: process.env.BFIS_LLM_MODEL ?? "openai/gpt-oss-20b",
     };
 }
 /**

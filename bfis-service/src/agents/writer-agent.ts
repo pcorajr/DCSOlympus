@@ -45,10 +45,29 @@ export class WriterAgent {
    * @returns Array of command results, one per action
    */
   async executeCommands(input: WriterAgentInput): Promise<CommandResult[]> {
+    const startTime = Date.now();
+    const decisionId = input.decision.decisionId;
+    const actionCount = input.decision.actions.length;
+
+    this.logger.debug("bfis-writer-execute-start", {
+      decisionId,
+      actionCount,
+      executionMode: this.executionMode,
+      timestamp: new Date().toISOString(),
+    });
+
     const results: CommandResult[] = [];
 
     for (let i = 0; i < input.decision.actions.length; i++) {
+      const actionStartTime = Date.now();
       const action = input.decision.actions[i];
+      
+      this.logger.debug("bfis-writer-action-start", {
+        decisionId,
+        actionIndex: i,
+        actionType: action.type,
+        timestamp: new Date().toISOString(),
+      });
 
       try {
         // Map action to command
@@ -64,6 +83,13 @@ export class WriterAgent {
             commandHash: uuidv4(),
             status: "FAILED",
             error: `Unknown action type: ${action.type}`,
+          });
+          this.logger.debug("bfis-writer-action-complete", {
+            decisionId,
+            actionIndex: i,
+            actionType: action.type,
+            status: "FAILED",
+            durationMs: Date.now() - actionStartTime,
           });
           continue; // Skip unknown actions
         }
@@ -83,12 +109,21 @@ export class WriterAgent {
               status: "FAILED",
               error: validationError,
             });
+            this.logger.debug("bfis-writer-action-complete", {
+              decisionId,
+              actionIndex: i,
+              actionType: action.type,
+              status: "FAILED",
+              durationMs: Date.now() - actionStartTime,
+            });
             continue;
           }
         }
 
         // Execute or log command
+        const commandStartTime = Date.now();
         const result = await this.executeOrLogCommand(command, action);
+        const commandDuration = Date.now() - commandStartTime;
         results.push(result);
 
         this.logger.info("bfis-writer-command-mapped", {
@@ -98,6 +133,15 @@ export class WriterAgent {
           commandName: command.name,
           commandHash: result.commandHash,
           status: result.status,
+          durationMs: commandDuration,
+        });
+        
+        this.logger.debug("bfis-writer-action-complete", {
+          decisionId,
+          actionIndex: i,
+          actionType: action.type,
+          status: result.status,
+          durationMs: Date.now() - actionStartTime,
         });
       } catch (error) {
         this.logger.error("bfis-writer-command-error", {
@@ -114,6 +158,20 @@ export class WriterAgent {
         });
       }
     }
+
+    const totalDuration = Date.now() - startTime;
+    const successfulCount = results.filter(r => r.status === "SENT" || r.status === "CONFIRMED" || r.status === "LOGGED").length;
+    const failedCount = results.filter(r => r.status === "FAILED").length;
+    
+    this.logger.debug("bfis-writer-execute-complete", {
+      decisionId,
+      totalActions: actionCount,
+      successfulCommands: successfulCount,
+      failedCommands: failedCount,
+      totalDurationMs: totalDuration,
+      averageDurationMs: actionCount > 0 ? (totalDuration / actionCount).toFixed(1) : "0.0",
+      timestamp: new Date().toISOString(),
+    });
 
     return results;
   }

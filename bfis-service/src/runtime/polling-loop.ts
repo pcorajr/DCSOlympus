@@ -44,6 +44,7 @@ export class PollingLoop {
   private isRunning: boolean = false;
   private lastSessionHash: string | null = null;
   private previousSnapshot: BfisContextSnapshot | null = null;
+  private lastDecisionCycleTime: number = 0; // Timestamp of last decision cycle
 
   /**
    * Create a new polling loop with the given dependencies.
@@ -161,6 +162,40 @@ export class PollingLoop {
 
       // Run orchestrator cycle if configured
       if (this.orchestrator) {
+        // Skip decision cycles if there are no units in the battlefield
+        const totalUnits = snapshot.base.units.length;
+        if (totalUnits === 0) {
+          this.logger.debug("bfis-cycle-skipped-empty", {
+            snapshotId: snapshot.base.snapshotId,
+            reason: "No units in battlefield",
+            unitCount: 0,
+          });
+          // Still update previous snapshot for change detection, but skip decision cycle
+          this.previousSnapshot = snapshot;
+          return;
+        }
+
+        const now = Date.now();
+        const timeSinceLastCycle = now - this.lastDecisionCycleTime;
+        const minInterval = this.config.polling.decisionCycleIntervalMs;
+
+        // Throttle decision cycles to prevent hammering the LLM
+        if (timeSinceLastCycle < minInterval) {
+          const remainingMs = minInterval - timeSinceLastCycle;
+          this.logger.debug("bfis-cycle-throttled", {
+            snapshotId: snapshot.base.snapshotId,
+            timeSinceLastCycle,
+            minInterval,
+            remainingMs,
+            skipped: true,
+          });
+          // Still update previous snapshot for change detection, but skip decision cycle
+          this.previousSnapshot = snapshot;
+          return;
+        }
+
+        // Run decision cycle
+        this.lastDecisionCycleTime = now;
         const initialState: AgentState = {
           currentSnapshot: snapshot,
           previousSnapshot: this.previousSnapshot,
