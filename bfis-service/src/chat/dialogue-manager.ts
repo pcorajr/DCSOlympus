@@ -19,6 +19,8 @@ import type { SnapshotReader } from "../snapshot/snapshot-reader.js";
 import type { MissionContext } from "../agents/types.js";
 import { ActionApprovalManager } from "./action-approval.js";
 import { createLLMClient } from "../intent/llm-client.js";
+import { createIntelTools } from "../agents/tools/intel-tools.js";
+import { WriterAgent } from "../agents/writer-agent.js";
 
 /**
  * Dialogue Manager for chat-based Copilot mode.
@@ -31,6 +33,9 @@ export class DialogueManager {
   private readonly llmClient: ReturnType<typeof createLLMClient>;
   private readonly approvalManager: ActionApprovalManager;
   private readonly maxHistoryLength: number;
+  private readonly intelTools: ReturnType<typeof createIntelTools>;
+  private readonly writerAgent: WriterAgent;
+  private currentSessionHash: string;
 
   constructor(
     private readonly config: BfisConfig,
@@ -46,10 +51,22 @@ export class DialogueManager {
       config.chat?.approvalTimeoutMs ?? 300000
     );
     this.maxHistoryLength = config.chat?.maxHistoryLength ?? 20;
+    this.currentSessionHash = "default";
+    
+    // Initialize Intel tools for LLM
+    this.intelTools = createIntelTools(
+      this.intelAgent,
+      this.snapshotReader,
+      this.currentSessionHash
+    );
+
+    // Initialize Writer agent for command execution
+    this.writerAgent = new WriterAgent(config, logger);
 
     this.logger.info("bfis-dialogue-manager-initialized", {
       maxHistoryLength: this.maxHistoryLength,
       approvalTimeoutMs: config.chat?.approvalTimeoutMs ?? 300000,
+      intelToolsCount: this.intelTools.length,
       timestamp: new Date().toISOString(),
     });
   }
@@ -195,9 +212,7 @@ export class DialogueManager {
         };
       }
 
-      // Execute approved decision via Writer agent
-      // Note: This requires Writer agent integration which will be added
-      // For now, return success status
+      // Execute approved decision via Writer agent (Spec-005 Phase 3)
       this.logger.info("bfis-decision-approved", {
         decisionId: input.decisionId,
         sessionId: input.sessionId,
@@ -205,12 +220,44 @@ export class DialogueManager {
         timestamp: new Date().toISOString(),
       });
 
+      // Finalize decision with Commander agent
+      const finalizedDecision = await this.commanderAgent.finalizeDecision(
+        pendingDecision.decision
+      );
+
+      // Execute commands via Writer agent with approval metadata
+      const snapshot = await this.snapshotReader.readContextOnce();
+      const availableCommands = [
+        "spawnAircrafts",
+        "spawnHelicopters",
+        "setPath",
+        "setGroupRoute",
+        "attackUnit",
+        "bombPoint",
+        "returnToBase",
+        "landAt",
+        "holdPosition",
+      ];
+
+      const commandResults = await this.writerAgent.executeCommands(
+        {
+          decision: finalizedDecision,
+          availableCommands,
+        },
+        true, // approved = true
+        input.sessionId // approvedBy = sessionId
+      );
+
       this.approvalManager.removeDecision(input.decisionId);
 
       return {
         decisionId: input.decisionId,
         approved: true,
-        commandResults: [],
+        commandResults: commandResults.map(r => ({
+          commandHash: r.commandHash,
+          status: r.status,
+          error: r.error,
+        })),
       };
     } catch (error) {
       this.logger.error("bfis-approval-execution-error", {
