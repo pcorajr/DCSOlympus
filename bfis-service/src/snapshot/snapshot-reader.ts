@@ -37,6 +37,7 @@ import type {
   NormalizedLogEntry,
   WeaponsSummary
 } from "../context/types.js";
+import { HostilityDetector } from "../hostility/hostility-detector.js";
 import {
   normalizeAirbases,
   normalizeBullseyes,
@@ -137,6 +138,13 @@ export class SnapshotReader {
   private weaponCache: Map<number, DecodedWeapon> = new Map();
 
   /**
+   * Hostility detector instance for detecting when hostilities have started.
+   * 
+   * Maintains in-memory state per mission session to track hostility awareness.
+   */
+  private readonly hostilityDetector: HostilityDetector;
+
+  /**
    * Create a new SnapshotReader with the given configuration.
    *
    * @param config - BFIS configuration containing Olympus URLs and auth
@@ -145,6 +153,7 @@ export class SnapshotReader {
   constructor(config: BfisConfig, logger?: StructuredLogger) {
     this.config = config;
     this.logger = logger;
+    this.hostilityDetector = new HostilityDetector(logger);
   }
 
   /**
@@ -1505,7 +1514,13 @@ export class SnapshotReader {
       }
     }
 
-    // 9. Assemble Context Snapshot
+    // 9. Detect hostility awareness
+    const hostilityAwareness = this.hostilityDetector.detect(
+      this.weaponCache,
+      baseSnapshot.sessionHash
+    );
+
+    // 10. Assemble Context Snapshot
     const contextSnapshot: BfisContextSnapshot = {
       base: baseSnapshot,
       airbases: normalizedAirbases,
@@ -1513,10 +1528,11 @@ export class SnapshotReader {
       spots: normalizedSpots,
       drawings: normalizedDrawings,
       logs: normalizedLogs,
-      weaponsSummary
+      weaponsSummary,
+      hostility: hostilityAwareness
     };
 
-    // 10. Log Success
+    // 11. Log Success
     if (this.logger) {
       this.logger.info("bfis-context-snapshot-ok", {
         snapshotId: baseSnapshot.snapshotId,

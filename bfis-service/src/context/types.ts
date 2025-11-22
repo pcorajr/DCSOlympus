@@ -39,6 +39,16 @@ export interface BfisContextSnapshot {
 
   /** Basic weapons state summary (always present). */
   weaponsSummary: WeaponsSummary;
+
+  /**
+   * Hostility awareness signal for this snapshot.
+   * 
+   * Indicates whether hostilities have started in the current mission session.
+   * Always present, never null/undefined.
+   * 
+   * @see FR-006
+   */
+  hostility: HostilityAwareness;
 }
 
 /**
@@ -140,6 +150,40 @@ export interface WeaponsSummary {
   lastUpdateTime: number;
   /** Total number of active weapons currently tracked. */
   activeCount: number;
+}
+
+/**
+ * Hostility awareness signal for a mission session.
+ * 
+ * Provides a simple boolean signal that combat has begun, without attempting
+ * to track ongoing attacks, identify targets, or assess threat levels.
+ * 
+ * @see FR-001, FR-002, FR-003
+ */
+export interface HostilityAwareness {
+  /**
+   * Whether hostilities have started in the current mission session.
+   * 
+   * Set to true when the first weapon is detected, remains true for the
+   * entire mission session until sessionHash changes.
+   */
+  hostilitiesStarted: boolean;
+
+  /**
+   * Timestamp (ms since epoch) when hostilities were first detected.
+   * 
+   * Undefined if hostilities have not started yet.
+   * Reset to undefined when sessionHash changes.
+   */
+  hostilitiesStartTime?: number;
+
+  /**
+   * Session hash this hostility state is associated with.
+   * 
+   * Used to detect mission resets and reset the hostility flag.
+   * May be empty string if session hash is missing/invalid.
+   */
+  sessionHash: string;
 }
 
 

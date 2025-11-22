@@ -133,5 +133,50 @@ describe("SnapshotReader", () => {
       console.log(`   ✓ Logs: ${snapshot.logs.length}`);
       console.log(`   ✓ Weapons: ${snapshot.weaponsSummary.activeCount}\n`);
     });
+
+    test("readContextOnce includes hostility awareness field", async () => {
+      const config = loadConfig();
+      const logger = createStructuredLogger(config.generalLogPath, config.logLevel);
+      const reader = new SnapshotReader(config, logger);
+
+      const snapshot = await reader.readContextOnce();
+
+      // Verify hostility field exists and has correct structure
+      assert.ok(snapshot.hostility !== undefined, "hostility field should exist");
+      assert.strictEqual(typeof snapshot.hostility.hostilitiesStarted, "boolean");
+      assert.strictEqual(typeof snapshot.hostility.sessionHash, "string");
+      
+      // Verify session hash consistency
+      assert.strictEqual(
+        snapshot.hostility.sessionHash,
+        snapshot.base.sessionHash,
+        "hostility.sessionHash should match base.sessionHash"
+      );
+
+      // hostilitiesStartTime should be undefined if hostilities not started, or number if started
+      if (snapshot.hostility.hostilitiesStarted) {
+        assert.strictEqual(
+          typeof snapshot.hostility.hostilitiesStartTime,
+          "number",
+          "hostilitiesStartTime should be number when hostilities started"
+        );
+        assert.ok(
+          snapshot.hostility.hostilitiesStartTime! > 0,
+          "hostilitiesStartTime should be positive timestamp"
+        );
+      } else {
+        assert.strictEqual(
+          snapshot.hostility.hostilitiesStartTime,
+          undefined,
+          "hostilitiesStartTime should be undefined when hostilities not started"
+        );
+      }
+
+      // Log hostility status for verification
+      console.log(`\n   ✓ Hostility Awareness:`);
+      console.log(`   - Started: ${snapshot.hostility.hostilitiesStarted}`);
+      console.log(`   - Start Time: ${snapshot.hostility.hostilitiesStartTime ?? "N/A"}`);
+      console.log(`   - Session Hash: ${snapshot.hostility.sessionHash}\n`);
+    });
   });
 });

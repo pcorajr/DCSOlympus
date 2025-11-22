@@ -27,8 +27,8 @@ This document breaks down the implementation into actionable, dependency-ordered
 
 **Independent Test**: Verify directories exist and are accessible
 
-- [ ] T001 Create hostility module directory structure at `bfis-service/src/hostility/`
-- [ ] T002 Create test directory at `bfis-service/src/hostility/__tests__/`
+- [X] T001 Create hostility module directory structure at `bfis-service/src/hostility/`
+- [X] T002 Create test directory at `bfis-service/src/hostility/__tests__/`
 
 ## Phase 2: Foundational
 
@@ -36,8 +36,8 @@ This document breaks down the implementation into actionable, dependency-ordered
 
 **Independent Test**: Types compile without errors, can be imported
 
-- [ ] T003 [P] Define `HostilityAwareness` interface in `bfis-service/src/context/types.ts` with fields: `hostilitiesStarted` (boolean), `hostilitiesStartTime` (number | undefined), `sessionHash` (string)
-- [ ] T004 [P] Extend `BfisContextSnapshot` interface in `bfis-service/src/context/types.ts` to include `hostility: HostilityAwareness` field
+- [X] T003 [P] Define `HostilityAwareness` interface in `bfis-service/src/context/types.ts` with fields: `hostilitiesStarted` (boolean), `hostilitiesStartTime` (number | undefined), `sessionHash` (string)
+- [X] T004 [P] Extend `BfisContextSnapshot` interface in `bfis-service/src/context/types.ts` to include `hostility: HostilityAwareness` field
 
 ## Phase 3: User Story 1 - Detect Hostilities Started (P1)
 
@@ -52,13 +52,13 @@ This document breaks down the implementation into actionable, dependency-ordered
 - Destroyed weapons (`alive: false`) → still count as hostilities started
 - Flag remains `true` once detected (even if cache becomes empty later)
 
-- [ ] T005 [US1] Create `HostilityDetector` class in `bfis-service/src/hostility/hostility-detector.ts` with constructor accepting optional `StructuredLogger`
-- [ ] T006 [US1] Implement private state fields in `HostilityDetector`: `hostilitiesStarted` (boolean), `hostilitiesStartTime` (number | undefined), `lastSessionHash` (string | null)
-- [ ] T007 [US1] Implement `detect()` method signature in `HostilityDetector` accepting `weaponCache: Map<number, DecodedWeapon>` and `sessionHash: string`, returning `HostilityAwareness`
-- [ ] T008 [US1] Implement weapon cache detection logic in `detect()`: if `hostilitiesStarted` is false and `weaponCache.size > 0`, set flag to true
-- [ ] T009 [US1] Implement earliest timestamp calculation in `detect()`: iterate through all weapons, find minimum `updateTime`, set as `hostilitiesStartTime`
-- [ ] T010 [US1] Implement empty cache handling in `detect()`: if cache is empty, return `hostilitiesStarted: false` (graceful degradation per FR-013)
-- [ ] T011 [US1] Implement one-time detection principle in `detect()`: once `hostilitiesStarted` is true, keep it true for entire session (per FR-004)
+- [X] T005 [US1] Create `HostilityDetector` class in `bfis-service/src/hostility/hostility-detector.ts` with constructor accepting optional `StructuredLogger`
+- [X] T006 [US1] Implement private state fields in `HostilityDetector`: `hostilitiesStarted` (boolean), `hostilitiesStartTime` (number | undefined), `lastSessionHash` (string | null)
+- [X] T007 [US1] Implement `detect()` method signature in `HostilityDetector` accepting `weaponCache: Map<number, DecodedWeapon>` and `sessionHash: string`, returning `HostilityAwareness`
+- [X] T008 [US1] Implement weapon cache detection logic in `detect()`: if `hostilitiesStarted` is false and `weaponCache.size > 0`, set flag to true
+- [X] T009 [US1] Implement earliest timestamp calculation in `detect()`: iterate through all weapons, find minimum `updateTime`, set as `hostilitiesStartTime`
+- [X] T010 [US1] Implement empty cache handling in `detect()`: if cache is empty, return `hostilitiesStarted: false` (graceful degradation per FR-013)
+- [X] T011 [US1] Implement one-time detection principle in `detect()`: once `hostilitiesStarted` is true, keep it true for entire session (per FR-004)
 
 ## Phase 4: User Story 2 - Reset on Mission Change (P2)
 
@@ -71,10 +71,10 @@ This document breaks down the implementation into actionable, dependency-ordered
 - New session starts fresh detection
 - Reset event logged when session hash changes
 
-- [ ] T012 [US2] Implement session hash change detection in `HostilityDetector.detect()`: compare `lastSessionHash` with current `sessionHash`
-- [ ] T013 [US2] Implement state reset logic in `HostilityDetector.detect()`: when session hash changes, reset `hostilitiesStarted` to false and clear `hostilitiesStartTime`
-- [ ] T014 [US2] Implement missing/invalid session hash handling in `HostilityDetector.detect()`: treat empty string as new session (per FR-014)
-- [ ] T015 [US2] Implement `bfis-hostilities-reset` logging event in `HostilityDetector.detect()` when session hash changes (per FR-010)
+- [X] T012 [US2] Implement session hash change detection in `HostilityDetector.detect()`: compare `lastSessionHash` with current `sessionHash`
+- [X] T013 [US2] Implement state reset logic in `HostilityDetector.detect()`: when session hash changes, reset `hostilitiesStarted` to false and clear `hostilitiesStartTime`
+- [X] T014 [US2] Implement missing/invalid session hash handling in `HostilityDetector.detect()`: treat empty string as new session (per FR-014)
+- [X] T015 [US2] Implement `bfis-hostilities-reset` logging event in `HostilityDetector.detect()` when session hash changes (per FR-010)
 
 ## Phase 5: User Story 3 - Provide Hostility Awareness in Context Snapshot (P1)
 
@@ -88,10 +88,10 @@ This document breaks down the implementation into actionable, dependency-ordered
 - `hostility.sessionHash` matches `base.sessionHash`
 - Field always present (never null/undefined)
 
-- [ ] T016 [US3] Add `HostilityDetector` import to `bfis-service/src/snapshot/snapshot-reader.ts`
-- [ ] T017 [US3] Add `hostilityDetector` field to `SnapshotReader` class in `bfis-service/src/snapshot/snapshot-reader.ts` initialized in constructor
-- [ ] T018 [US3] Integrate `HostilityDetector.detect()` call in `SnapshotReader.readContextOnce()` after context snapshot assembly, passing `this.weaponCache` and `baseSnapshot.sessionHash`
-- [ ] T019 [US3] Attach `HostilityAwareness` result to `BfisContextSnapshot.hostility` field before returning from `readContextOnce()`
+- [X] T016 [US3] Add `HostilityDetector` import to `bfis-service/src/snapshot/snapshot-reader.ts`
+- [X] T017 [US3] Add `hostilityDetector` field to `SnapshotReader` class in `bfis-service/src/snapshot/snapshot-reader.ts` initialized in constructor
+- [X] T018 [US3] Integrate `HostilityDetector.detect()` call in `SnapshotReader.readContextOnce()` after context snapshot assembly, passing `this.weaponCache` and `baseSnapshot.sessionHash`
+- [X] T019 [US3] Attach `HostilityAwareness` result to `BfisContextSnapshot.hostility` field before returning from `readContextOnce()`
 
 ## Phase 6: Polish & Cross-Cutting Concerns
 
@@ -99,18 +99,18 @@ This document breaks down the implementation into actionable, dependency-ordered
 
 **Independent Test**: All edge cases handled, logging events emitted, tests pass
 
-- [ ] T020 [P] Implement `bfis-hostilities-started` logging event in `HostilityDetector.detect()` when hostilities first detected (per FR-009)
-- [ ] T021 [P] Implement `bfis-hostilities-status` debug logging in `HostilityDetector.detect()` when hostilities already started (optional visibility)
-- [ ] T022 [P] Add comprehensive JSDoc/TSDoc comments to `HostilityDetector` class and methods per constitution Principle VIII
-- [ ] T023 [P] Add comprehensive JSDoc/TSDoc comments to `HostilityAwareness` interface per constitution Principle VIII
-- [ ] T024 [P] Create unit tests in `bfis-service/src/hostility/__tests__/hostility-detector.test.ts` for empty cache scenario
-- [ ] T025 [P] Create unit tests in `bfis-service/src/hostility/__tests__/hostility-detector.test.ts` for weapon detection scenario
-- [ ] T026 [P] Create unit tests in `bfis-service/src/hostility/__tests__/hostility-detector.test.ts` for multiple weapons earliest timestamp scenario
-- [ ] T027 [P] Create unit tests in `bfis-service/src/hostility/__tests__/hostility-detector.test.ts` for session hash change reset scenario
-- [ ] T028 [P] Create unit tests in `bfis-service/src/hostility/__tests__/hostility-detector.test.ts` for one-time detection principle (flag stays true)
-- [ ] T029 [P] Create unit tests in `bfis-service/src/hostility/__tests__/hostility-detector.test.ts` for missing/invalid session hash handling
-- [ ] T030 [P] Create integration tests verifying `BfisContextSnapshot.hostility` populated correctly in snapshot reader tests
-- [ ] T031 [P] Verify all tests run in Docker container per constitution (update test scripts if needed)
+- [X] T020 [P] Implement `bfis-hostilities-started` logging event in `HostilityDetector.detect()` when hostilities first detected (per FR-009)
+- [X] T021 [P] Implement `bfis-hostilities-status` debug logging in `HostilityDetector.detect()` when hostilities already started (optional visibility)
+- [X] T022 [P] Add comprehensive JSDoc/TSDoc comments to `HostilityDetector` class and methods per constitution Principle VIII
+- [X] T023 [P] Add comprehensive JSDoc/TSDoc comments to `HostilityAwareness` interface per constitution Principle VIII
+- [X] T024 [P] Create unit tests in `bfis-service/src/hostility/__tests__/hostility-detector.test.ts` for empty cache scenario
+- [X] T025 [P] Create unit tests in `bfis-service/src/hostility/__tests__/hostility-detector.test.ts` for weapon detection scenario
+- [X] T026 [P] Create unit tests in `bfis-service/src/hostility/__tests__/hostility-detector.test.ts` for multiple weapons earliest timestamp scenario
+- [X] T027 [P] Create unit tests in `bfis-service/src/hostility/__tests__/hostility-detector.test.ts` for session hash change reset scenario
+- [X] T028 [P] Create unit tests in `bfis-service/src/hostility/__tests__/hostility-detector.test.ts` for one-time detection principle (flag stays true)
+- [X] T029 [P] Create unit tests in `bfis-service/src/hostility/__tests__/hostility-detector.test.ts` for missing/invalid session hash handling
+- [X] T030 [P] Create integration tests verifying `BfisContextSnapshot.hostility` populated correctly in snapshot reader tests
+- [X] T031 [P] Verify all tests run in Docker container per constitution (update test scripts if needed)
 
 ## Parallel Execution Opportunities
 
