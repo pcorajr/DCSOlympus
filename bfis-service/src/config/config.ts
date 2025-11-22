@@ -113,6 +113,25 @@ export interface AgentConfig {
 }
 
 /**
+ * Chat interface configuration for human-in-the-loop Copilot mode.
+ *
+ * Per Spec-005: Configuration for chat-based interaction where humans
+ * initiate all actions and explicitly approve decisions.
+ */
+export interface ChatConfig {
+  /** Enable chat interface (default: true) */
+  enabled: boolean;
+  /** HTTP server port for chat endpoints (default: 4513) */
+  port: number;
+  /** Max conversation history length per session (default: 20) */
+  maxHistoryLength: number;
+  /** Action approval timeout in milliseconds (default: 300000 = 5 minutes) */
+  approvalTimeoutMs: number;
+  /** Allow autonomous mode bypass (default: false) */
+  allowAutonomous: boolean;
+}
+
+/**
  * Complete BFIS service configuration.
  *
  * This is the single source of truth for all runtime configuration.
@@ -131,6 +150,8 @@ export interface BfisConfig {
   llm: LlmConfig;
   /** Agent-specific configuration for multi-agent LLM architecture. */
   agents?: AgentConfig;
+  /** Chat interface configuration for human-in-the-loop Copilot mode (Spec-005). */
+  chat?: ChatConfig;
 }
 
 /**
@@ -387,6 +408,23 @@ function resolveAgentConfig(): AgentConfig {
 }
 
 /**
+ * Resolve chat configuration with defaults.
+ *
+ * Per Spec-005: Default to human-in-the-loop mode with chat interface enabled.
+ *
+ * @returns Chat configuration with all defaults applied
+ */
+function resolveChatConfig(): ChatConfig {
+  return {
+    enabled: process.env.BFIS_CHAT_ENABLED !== "false", // Default: true
+    port: Number(process.env.BFIS_CHAT_PORT ?? 4513), // Default: 4513 (different from Olympus backend 4512)
+    maxHistoryLength: Number(process.env.BFIS_CHAT_MAX_HISTORY ?? 20), // Default: 20 messages
+    approvalTimeoutMs: Number(process.env.BFIS_CHAT_APPROVAL_TIMEOUT_MS ?? 300000), // Default: 5 minutes
+    allowAutonomous: process.env.BFIS_CHAT_ALLOW_AUTONOMOUS === "true", // Default: false (Spec-005)
+  };
+}
+
+/**
  * Load and return the full BFIS configuration.
  *
  * This function is safe to call multiple times; environment loading happens once
@@ -414,5 +452,6 @@ export function loadConfig(): BfisConfig {
     ndjsonLogPath: process.env.BFIS_NDJSON_LOG_PATH ?? "logs/bfis-decisions.ndjson",
     llm: resolveLlmConfig(),
     agents: resolveAgentConfig(),
+    chat: resolveChatConfig(),
   };
 }
