@@ -14,7 +14,13 @@
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import type { IntelAgent } from "../intel-agent.js";
-import type { SnapshotReader } from "../../snapshot/snapshot-reader.js";
+import type { BfisContextSnapshot } from "../../context/types.js";
+
+interface IntelToolContext {
+  snapshot: BfisContextSnapshot;
+  sessionId: string;
+  previousSnapshots: Map<string, BfisContextSnapshot>;
+}
 
 /**
  * Create Intel tools for LangChain LLM integration.
@@ -26,11 +32,10 @@ import type { SnapshotReader } from "../../snapshot/snapshot-reader.js";
  */
 export function createIntelTools(
   intelAgent: IntelAgent,
-  snapshotReader: SnapshotReader,
-  sessionHash: string
+  context: IntelToolContext
 ): any[] {
-  // Cache for previous snapshot (for change detection)
-  let previousSnapshot: any = null;
+  // Cache reference for change detection (shared per session)
+  const previousSnapshots = context.previousSnapshots;
 
   /**
    * Tool: Get current battlefield summary
@@ -42,48 +47,10 @@ export function createIntelTools(
   const getCurrentSummaryTool = tool(
     async () => {
       try {
-        const snapshot = await snapshotReader.readContextOnce();
-        
-        // Build summary manually since generateSummary is private
-        // TODO: Make IntelAgent.generateSummary public or add public method
-        const summary = {
-          snapshotId: snapshot.base.snapshotId,
-          snapshotTime: snapshot.base.time || new Date().toISOString(),
-          unitCounts: {
-            BLUE: snapshot.base.units.filter(u => u.coalition === "BLUE").length,
-            RED: snapshot.base.units.filter(u => u.coalition === "RED").length,
-            NEUTRAL: snapshot.base.units.filter(u => u.coalition === "NEUTRAL").length,
-            UNKNOWN: snapshot.base.units.filter(u => !u.coalition || u.coalition === "UNKNOWN").length,
-          },
-          categoryCounts: snapshot.base.units.reduce((acc, unit) => {
-            const category = unit.category || "UNKNOWN";
-            acc[category] = (acc[category] || 0) + 1;
-            return acc;
-          }, {} as Record<string, number>),
-          keyPositions: snapshot.base.units
-            .filter(u => u.coalition === "BLUE" && (u.category === "AIRBASE" || u.category === "SHIP"))
-            .slice(0, 10)
-            .map(u => ({
-              unitId: u.unitId,
-              name: u.name || "Unknown",
-              position: u.position,
-              category: u.category || "UNKNOWN",
-            })),
-          threats: snapshot.base.units
-            .filter(u => u.coalition === "RED" && (u.category === "AIRPLANE" || u.category === "SAM"))
-            .slice(0, 10)
-            .map(u => ({
-              unitId: u.unitId,
-              name: u.name || "Unknown",
-              position: u.position,
-              category: u.category || "UNKNOWN",
-              threat: u.category === "SAM" ? "high" : "medium",
-            })),
-        };
-
-        return JSON.stringify(summary, null, 2);
+        const summary = await intelAgent.buildSummary(context.snapshot);
+        return summary;
       } catch (error) {
-        return `Error fetching battlefield summary: ${error instanceof Error ? error.message : String(error)}`;
+        return { error: `Error fetching battlefield summary: ${error instanceof Error ? error.message : String(error)}` };
       }
     },
     {
@@ -102,57 +69,99 @@ export function createIntelTools(
   const getUnitInfoTool = tool(
     async (params: { coalition?: string; category?: string; zone?: string }) => {
       try {
-        const snapshot = await snapshotReader.readContextOnce();
+        const snapshot = context.snapshot;
+        const { coalition, category, zone } = params;
         
         let filteredUnits = snapshot.base.units;
 
         // Filter by coalition
-        if (params.coalition) {
+        if (coalition) {
           filteredUnits = filteredUnits.filter(u => 
-            u.coalition?.toUpperCase() === params.coalition?.toUpperCase()
+            u.coalition?.toUpperCase() === coalition?.toUpperCase()
           );
         }
 
         // Filter by category
-        if (params.category) {
+        if (category) {
           filteredUnits = filteredUnits.filter(u => 
-            u.category?.toUpperCase() === params.category?.toUpperCase()
+            u.category?.toUpperCase() === category?.toUpperCase()
           );
         }
 
         // Filter by zone (simple name matching for MVP)
-        if (params.zone) {
+        if (zone) {
           filteredUnits = filteredUnits.filter(u => 
-            u.name?.toLowerCase().includes(params.zone?.toLowerCase() || "")
+            u.name?.toLowerCase().includes(zone?.toLowerCase() || "")
           );
         }
 
         const result = {
           totalCount: filteredUnits.length,
           filters: params,
-          units: filteredUnits.slice(0, 20).map(u => ({
+          units: filteredUnits.slice(0, 50).map(u => ({
             unitId: u.unitId,
             name: u.name || "Unknown",
             coalition: u.coalition || "UNKNOWN",
             category: u.category || "UNKNOWN",
             position: u.position,
+            type: u.unitType || u.name || "UNKNOWN", // OlympusUnit has unitType, not type
           })),
-          truncated: filteredUnits.length > 20,
+          truncated: filteredUnits.length > 50,
+          countsByType: filteredUnits.reduce((acc: Record<string, number>, u) => {
+            const t = u.unitType || u.name || "UNKNOWN";
+            acc[t] = (acc[t] || 0) + 1;
+            return acc;
+          }, {}),
         };
 
-        return JSON.stringify(result, null, 2);
+        return result;
       } catch (error) {
-        return `Error fetching unit info: ${error instanceof Error ? error.message : String(error)}`;
+        return { error: `Error fetching unit info: ${error instanceof Error ? error.message : String(error)}` };
       }
     },
     {
       name: "get_unit_info",
-      description: "Queries specific units by coalition (BLUE/RED/NEUTRAL), category (AIRPLANE/HELICOPTER/SHIP/SAM/etc), or zone name. Use when human asks about specific forces like 'show me RED aircraft' or 'what BLUE ships are there'.",
+      description: "Queries specific units by coalition (BLUE/RED/NEUTRAL), category (AIRPLANE, HELICOPTER, SHIP, SAM, etc), or zone name. Use when human asks about specific forces like 'show me RED aircraft' or 'what BLUE ships are there'.",
       schema: z.object({
         coalition: z.enum(["BLUE", "RED", "NEUTRAL", "UNKNOWN"]).optional().describe("Filter by coalition"),
         category: z.string().optional().describe("Filter by unit category (AIRPLANE, HELICOPTER, SHIP, SAM, etc)"),
         zone: z.string().optional().describe("Filter by zone name (partial match)"),
       }),
+    }
+  );
+
+  /**
+   * Tool: Get aircraft breakdown by type.
+   */
+  const getAircraftBreakdownTool = tool(
+    async () => {
+      try {
+        const snapshot = context.snapshot;
+        const aircraft = snapshot.base.units.filter(u => (u.category || "").toUpperCase() === "AIRPLANE");
+        const byType = aircraft.reduce((acc: Record<string, number>, u) => {
+          const t = u.unitType || u.name || "UNKNOWN";
+          acc[t] = (acc[t] || 0) + 1;
+          return acc;
+        }, {});
+        return {
+          totalAircraft: aircraft.length,
+          byType,
+          sample: aircraft.slice(0, 50).map(u => ({
+            unitId: u.unitId,
+            name: u.name || "Unknown",
+            type: u.unitType || u.name || "UNKNOWN",
+            coalition: u.coalition || "UNKNOWN",
+            position: u.position,
+          })),
+        };
+      } catch (error) {
+        return { error: `Error getting aircraft breakdown: ${error instanceof Error ? error.message : String(error)}` };
+      }
+    },
+    {
+      name: "get_aircraft_breakdown",
+      description: "Provides aircraft counts by type (e.g., IL-76, B-1B) plus samples. Use for questions about specific aircraft types or totals.",
+      schema: z.object({}),
     }
   );
 
@@ -165,53 +174,21 @@ export function createIntelTools(
   const getRecentChangesTool = tool(
     async () => {
       try {
-        const currentSnapshot = await snapshotReader.readContextOnce();
+        const prev = previousSnapshots.get(context.sessionId);
 
-        if (!previousSnapshot) {
-          previousSnapshot = currentSnapshot;
-          return JSON.stringify({
+        if (!prev) {
+          previousSnapshots.set(context.sessionId, context.snapshot);
+          return {
             message: "No previous snapshot available - this is the first check",
-            currentUnitCount: currentSnapshot.base.units.length,
-          }, null, 2);
+            currentUnitCount: context.snapshot.base.units.length,
+          };
         }
 
-        // Detect changes manually since detectChanges is private
-        // Simple change detection: compare unit counts
-        const prevUnits = previousSnapshot.base.units || [];
-        const currUnits = currentSnapshot.base.units || [];
-        
-        const prevUnitIds = new Set(prevUnits.map((u: any) => u.unitId));
-        const currUnitIds = new Set(currUnits.map((u: any) => u.unitId));
-        
-        const newUnits = currUnits.filter((u: any) => !prevUnitIds.has(u.unitId)).slice(0, 10);
-        const destroyedUnits = prevUnits.filter((u: any) => !currUnitIds.has(u.unitId)).slice(0, 10);
-
-        // Update cache
-        previousSnapshot = currentSnapshot;
-
-        const result = {
-          newUnits: newUnits.map((u: any) => ({
-            unitId: u.unitId,
-            name: u.name || "Unknown",
-            coalition: u.coalition || "UNKNOWN",
-            category: u.category || "UNKNOWN",
-          })),
-          destroyedUnits: destroyedUnits.map((u: any) => ({
-            unitId: u.unitId,
-            name: u.name || "Unknown",
-            coalition: u.coalition || "UNKNOWN",
-            category: u.category || "UNKNOWN",
-          })),
-          movedUnits: [], // Simplified for MVP
-          hostilityChanged: false,
-          totalNew: newUnits.length,
-          totalDestroyed: destroyedUnits.length,
-          totalMoved: 0,
-        };
-
-        return JSON.stringify(result, null, 2);
+        const changes = await intelAgent.detectChanges(context.snapshot, prev);
+        previousSnapshots.set(context.sessionId, context.snapshot);
+        return changes ?? { message: "No significant changes detected" };
       } catch (error) {
-        return `Error detecting changes: ${error instanceof Error ? error.message : String(error)}`;
+        return { error: `Error detecting changes: ${error instanceof Error ? error.message : String(error)}` };
       }
     },
     {
@@ -221,5 +198,5 @@ export function createIntelTools(
     }
   );
 
-  return [getCurrentSummaryTool, getUnitInfoTool, getRecentChangesTool];
+  return [getCurrentSummaryTool, getUnitInfoTool, getAircraftBreakdownTool, getRecentChangesTool];
 }

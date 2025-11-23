@@ -5,8 +5,9 @@
   "main": "build/src/index.js",
   "type": "module",
   "scripts": {
-    "build": "tsc",
-    "start": "node build/index.js",
+    "build": "tsc && npm run copy-public",
+    "copy-public": "mkdir -p build/src/chat/public && cp -r src/chat/public/* build/src/chat/public/",
+    "start": "node build/src/index.js",
     "dev": "ts-node --esm src/index.ts",
     "type-check": "tsc --noEmit",
     "test": "node --test"

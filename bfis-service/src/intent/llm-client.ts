@@ -6,6 +6,7 @@
  */
 
 import type { BfisConfig } from "../config/config.js";
+import type { StructuredLogger } from "../logger/structured-logger.js";
 
 /**
  * LLM invocation options.
@@ -49,7 +50,19 @@ export interface ToolDefinition {
   /** JSON schema for tool parameters (Zod schema or plain object). */
   schema: unknown;
   /** The actual function to invoke when tool is called. */
-  invoke: (args: unknown) => Promise<string>;
+  invoke: (args: unknown) => Promise<unknown>;
+}
+
+/**
+ * Strip invalid tool-call/channel artifacts (e.g., <|channel|>commentary to=...).
+ * This is defensive sanitation so we can return a readable message if the model
+ * used an unsupported format.
+ */
+function sanitizeInvalidToolFormat(content: string): string {
+  // Remove <|...|> markers
+  const withoutMarkers = content.replace(/<\|[^|]+?\|>/g, "");
+  // Remove stray braces that may surround empty JSON attempts
+  return withoutMarkers.trim();
 }
 
 /**
@@ -101,7 +114,8 @@ export interface LLMClient {
 class OllamaClient implements LLMClient {
   constructor(
     private readonly baseUrl: string,
-    private readonly model: string
+    private readonly model: string,
+    private readonly logger?: StructuredLogger
   ) {}
 
   async invoke(prompt: string, options?: LLMOptions): Promise<LLMResponse> {
@@ -176,22 +190,79 @@ Your response:`;
     // First LLM call: check if tool is needed
     const firstResponse = await this.invoke(toolAwarePrompt, options);
     
-    // Log raw response for debugging
-    console.log('[LLMstudioClient] First response (first 500 chars):', firstResponse.content.substring(0, 500));
-    
     // Try to parse as tool call
     const toolCall = this.parseToolCall(firstResponse.content);
     
     if (!toolCall) {
       // No tool call detected - check if it looks like a tool call format that failed to parse
-      if (firstResponse.content.includes('<|') && firstResponse.content.includes('message|>')) {
-        console.warn('[LLMstudioClient] Response contains tool call format but parsing failed:', firstResponse.content.substring(0, 300));
+      if (firstResponse.content.includes("<|") && firstResponse.content.includes("message|>")) {
+        // Try to salvage tool name and force a call with empty args
+        const fallbackToolMatch = firstResponse.content.match(/to=(?:functions|tool)\.([a-zA-Z0-9_]+)/);
+        const fallbackToolCall = (() => {
+          const match = firstResponse.content.match(/to=(?:functions|tool)\.([a-zA-Z0-9_]+)/);
+          if (match) return { toolName: match[1], arguments: {} as Record<string, unknown> };
+          const aircraftTool = tools.find(t => t.name === "get_aircraft_breakdown");
+          if (aircraftTool) return { toolName: aircraftTool.name, arguments: {} as Record<string, unknown> };
+          const defaultTool = tools.find(t => t.name === "get_battlefield_summary");
+          if (defaultTool) return { toolName: defaultTool.name, arguments: {} as Record<string, unknown> };
+          return null;
+        })();
+
+        if (fallbackToolCall) {
+          this.logger?.warn("bfis-llm-toolcall-fallback", {
+            toolName: fallbackToolCall.toolName,
+            reason: "Invalid tool call format; attempting empty-args call",
+            snippet: firstResponse.content.substring(0, 300),
+          });
+          const tool = tools.find(t => t.name === fallbackToolCall.toolName);
+          if (tool) {
+            let toolResult: string;
+            try {
+              const result = await tool.invoke(fallbackToolCall.arguments);
+              toolResult = typeof result === "string" ? result : JSON.stringify(result, null, 2);
+            } catch (error) {
+              toolResult = `Error executing tool: ${error instanceof Error ? error.message : String(error)}`;
+              this.logger?.error("bfis-llm-tool-error", {
+                toolName: fallbackToolCall.toolName,
+                error: toolResult,
+              });
+            }
+            return {
+              content: toolResult,
+              usage: firstResponse.usage,
+              toolCalls: [{
+                toolName: fallbackToolCall.toolName,
+                arguments: fallbackToolCall.arguments,
+              }],
+            };
+          }
+        }
+        this.logger?.warn("bfis-llm-toolcall-parse-warning", {
+          snippet: firstResponse.content.substring(0, 300),
+        });
+        // Sanitize and return best-effort natural language instead of leaking tool artifacts
+        const sanitized = sanitizeInvalidToolFormat(firstResponse.content);
+        if (sanitized.length > 0) {
+          return {
+            content: sanitized,
+            usage: firstResponse.usage,
+          };
+        }
+        // If nothing usable remains, fall back to a friendly retry hint
+        return {
+          content:
+            "I could not parse that. Please ask again using natural language, or use a tool via JSON (get_battlefield_summary, get_unit_info, get_recent_changes).",
+          usage: firstResponse.usage,
+        };
       }
       // No tool call - return natural language response
       return firstResponse;
     }
     
-    console.log('[LLMstudioClient] Parsed tool call:', toolCall);
+    this.logger?.info("bfis-llm-tool-request", {
+      toolName: toolCall.toolName,
+      arguments: toolCall.arguments,
+    });
 
     // Execute the requested tool
     const tool = tools.find(t => t.name === toolCall.toolName);
@@ -206,9 +277,14 @@ Your response:`;
 
     let toolResult: string;
     try {
-      toolResult = await tool.invoke(toolCall.arguments);
+      const result = await tool.invoke(toolCall.arguments);
+      toolResult = typeof result === "string" ? result : JSON.stringify(result);
     } catch (error) {
       toolResult = `Error executing tool: ${error instanceof Error ? error.message : String(error)}`;
+      this.logger?.error("bfis-llm-tool-error", {
+        toolName: toolCall.toolName,
+        error: toolResult,
+      });
     }
 
     // Second LLM call: generate final answer using tool result
@@ -222,7 +298,6 @@ ${toolResult}
 Using this information, please answer the user's question in natural language:`;
 
     const finalResponse = await this.invoke(finalPrompt, options);
-    
     return {
       content: finalResponse.content,
       usage: finalResponse.usage,
@@ -304,6 +379,10 @@ Using this information, please answer the user's question in natural language:`;
       }
       
       if (!jsonContent || !jsonContent.trim().startsWith('{')) {
+        // If we detected a tool name but no JSON payload, default to empty arguments
+        if (toolName) {
+          return { toolName, arguments: {} };
+        }
         return null;
       }
 
@@ -317,10 +396,10 @@ Using this information, please answer the user's question in natural language:`;
           try {
             parsed = JSON.parse(jsonMatch[0]);
           } catch {
-            return null;
+            return toolName ? { toolName, arguments: {} } : null;
           }
         } else {
-          return null;
+          return toolName ? { toolName, arguments: {} } : null;
         }
       }
       
@@ -343,7 +422,10 @@ Using this information, please answer the user's question in natural language:`;
       return null;
     } catch (error) {
       // Log parsing errors for debugging
-      console.warn('[OllamaClient] Failed to parse tool call:', error, 'Content:', content.substring(0, 200));
+      this.logger?.warn("bfis-llm-toolcall-parse-error", {
+        error: error instanceof Error ? error.message : String(error),
+        snippet: content.substring(0, 200),
+      });
       return null;
     }
   }
@@ -366,7 +448,8 @@ Using this information, please answer the user's question in natural language:`;
 class LLMstudioClient implements LLMClient {
   constructor(
     private readonly baseUrl: string,
-    private readonly model: string
+    private readonly model: string,
+    private readonly logger?: StructuredLogger
   ) {}
 
   async invoke(prompt: string, options?: LLMOptions): Promise<LLMResponse> {
@@ -445,22 +528,78 @@ Your response:`;
     // First LLM call: check if tool is needed
     const firstResponse = await this.invoke(toolAwarePrompt, options);
     
-    // Log raw response for debugging
-    console.log('[LLMstudioClient] First response (first 500 chars):', firstResponse.content.substring(0, 500));
-    
     // Try to parse as tool call
     const toolCall = this.parseToolCall(firstResponse.content);
     
     if (!toolCall) {
       // No tool call detected - check if it looks like a tool call format that failed to parse
-      if (firstResponse.content.includes('<|') && firstResponse.content.includes('message|>')) {
-        console.warn('[LLMstudioClient] Response contains tool call format but parsing failed:', firstResponse.content.substring(0, 300));
+      if (firstResponse.content.includes("<|") && firstResponse.content.includes("message|>")) {
+        // Try to salvage tool name and force a call with empty args
+        const fallbackToolCall = (() => {
+          const match = firstResponse.content.match(/to=(?:functions|tool)\.([a-zA-Z0-9_]+)/);
+          if (match) return { toolName: match[1], arguments: {} as Record<string, unknown> };
+          const aircraftTool = tools.find(t => t.name === "get_aircraft_breakdown");
+          if (aircraftTool) return { toolName: aircraftTool.name, arguments: {} as Record<string, unknown> };
+          const defaultTool = tools.find(t => t.name === "get_battlefield_summary");
+          if (defaultTool) return { toolName: defaultTool.name, arguments: {} as Record<string, unknown> };
+          return null;
+        })();
+
+        if (fallbackToolCall) {
+          this.logger?.warn("bfis-llm-toolcall-fallback", {
+            toolName: fallbackToolCall.toolName,
+            reason: "Invalid tool call format; attempting empty-args call",
+            snippet: firstResponse.content.substring(0, 300),
+          });
+          const tool = tools.find(t => t.name === fallbackToolCall.toolName);
+          if (tool) {
+            let toolResult: string;
+            try {
+              const result = await tool.invoke(fallbackToolCall.arguments);
+              toolResult = typeof result === "string" ? result : JSON.stringify(result, null, 2);
+            } catch (error) {
+              toolResult = `Error executing tool: ${error instanceof Error ? error.message : String(error)}`;
+              this.logger?.error("bfis-llm-tool-error", {
+                toolName: fallbackToolCall.toolName,
+                error: toolResult,
+              });
+            }
+            return {
+              content: toolResult,
+              usage: firstResponse.usage,
+              toolCalls: [{
+                toolName: fallbackToolCall.toolName,
+                arguments: fallbackToolCall.arguments,
+              }],
+            };
+          }
+        }
+        this.logger?.warn("bfis-llm-toolcall-parse-warning", {
+          snippet: firstResponse.content.substring(0, 300),
+        });
+        // Sanitize and return best-effort natural language instead of leaking tool artifacts
+        const sanitized = sanitizeInvalidToolFormat(firstResponse.content);
+        if (sanitized.length > 0) {
+          return {
+            content: sanitized,
+            usage: firstResponse.usage,
+          };
+        }
+        // If nothing usable remains, fall back to a friendly retry hint
+        return {
+          content:
+            "I could not parse that. Please ask again using natural language, or use a tool via JSON (get_battlefield_summary, get_unit_info, get_recent_changes).",
+          usage: firstResponse.usage,
+        };
       }
       // No tool call - return natural language response
       return firstResponse;
     }
     
-    console.log('[LLMstudioClient] Parsed tool call:', toolCall);
+    this.logger?.info("bfis-llm-tool-request", {
+      toolName: toolCall.toolName,
+      arguments: toolCall.arguments,
+    });
 
     // Execute the requested tool
     const tool = tools.find(t => t.name === toolCall.toolName);
@@ -475,9 +614,14 @@ Your response:`;
 
     let toolResult: string;
     try {
-      toolResult = await tool.invoke(toolCall.arguments);
+      const result = await tool.invoke(toolCall.arguments);
+      toolResult = typeof result === "string" ? result : JSON.stringify(result);
     } catch (error) {
       toolResult = `Error executing tool: ${error instanceof Error ? error.message : String(error)}`;
+      this.logger?.error("bfis-llm-tool-error", {
+        toolName: toolCall.toolName,
+        error: toolResult,
+      });
     }
 
     // Second LLM call: generate final answer using tool result
@@ -573,6 +717,10 @@ Using this information, please answer the user's question in natural language:`;
       }
       
       if (!jsonContent || !jsonContent.trim().startsWith('{')) {
+        // If we detected a tool name but no JSON payload, default to empty arguments
+        if (toolName) {
+          return { toolName, arguments: {} };
+        }
         return null;
       }
 
@@ -586,10 +734,10 @@ Using this information, please answer the user's question in natural language:`;
           try {
             parsed = JSON.parse(jsonMatch[0]);
           } catch {
-            return null;
+            return toolName ? { toolName, arguments: {} } : null;
           }
         } else {
-          return null;
+          return toolName ? { toolName, arguments: {} } : null;
         }
       }
       
@@ -612,7 +760,10 @@ Using this information, please answer the user's question in natural language:`;
       return null;
     } catch (error) {
       // Log parsing errors for debugging
-      console.warn('[LLMstudioClient] Failed to parse tool call:', error, 'Content:', content.substring(0, 200));
+      this.logger?.warn("bfis-llm-toolcall-parse-error", {
+        error: error instanceof Error ? error.message : String(error),
+        snippet: content.substring(0, 200),
+      });
       return null;
     }
   }
@@ -654,18 +805,18 @@ class NoOpLLMClient implements LLMClient {
  * @returns LLM client instance
  * @throws Error if provider not supported or configuration invalid
  */
-export function createLLMClient(config: BfisConfig): LLMClient {
+export function createLLMClient(config: BfisConfig, logger?: StructuredLogger): LLMClient {
   // If provider is "none" or unavailable, return no-op client
   if (config.llm.provider === "none" || !config.llm.baseUrl || !config.llm.model) {
     return new NoOpLLMClient();
   }
 
   if (config.llm.provider === "ollama") {
-    return new OllamaClient(config.llm.baseUrl, config.llm.model);
+    return new OllamaClient(config.llm.baseUrl, config.llm.model, logger);
   }
 
   if (config.llm.provider === "llmstudio") {
-    return new LLMstudioClient(config.llm.baseUrl, config.llm.model);
+    return new LLMstudioClient(config.llm.baseUrl, config.llm.model, logger);
   }
 
   throw new Error(`Unsupported LLM provider: ${config.llm.provider}`);

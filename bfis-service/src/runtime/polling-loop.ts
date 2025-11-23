@@ -164,6 +164,15 @@ export class PollingLoop {
       // Per Spec-005: Default to human-in-the-loop mode (triggerOrchestrator=false)
       // to prevent autonomous "action-happy" behavior
       if (this.orchestrator && this.config.polling.triggerOrchestrator) {
+        if (this.config.chat && this.config.chat.allowAutonomous !== true) {
+          this.logger.info("bfis-cycle-skipped-human-mode", {
+            snapshotId: snapshot.base.snapshotId,
+            reason: "Autonomous execution disabled by chat.allowAutonomous",
+            allowAutonomous: this.config.chat.allowAutonomous,
+          });
+          this.previousSnapshot = snapshot;
+          return;
+        }
         // Skip decision cycles if there are no units in the battlefield
         const totalUnits = snapshot.base.units.length;
         if (totalUnits === 0) {
@@ -264,4 +273,3 @@ export class PollingLoop {
     return this.isRunning;
   }
 }
-

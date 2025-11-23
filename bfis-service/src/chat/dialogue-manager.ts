@@ -17,10 +17,13 @@ import type { IntelAgent } from "../agents/intel-agent.js";
 import type { CommanderAgent } from "../agents/commander-agent.js";
 import type { SnapshotReader } from "../snapshot/snapshot-reader.js";
 import type { MissionContext } from "../agents/types.js";
+import type { BfisContextSnapshot } from "../context/types.js";
+import type { BfisDecision } from "../../../shared-schemas/index.js";
 import { ActionApprovalManager } from "./action-approval.js";
 import { createLLMClient, type ToolDefinition } from "../intent/llm-client.js";
 import { createIntelTools } from "../agents/tools/intel-tools.js";
 import { WriterAgent } from "../agents/writer-agent.js";
+import { v4 as uuidv4 } from "uuid";
 
 /**
  * Dialogue Manager for chat-based Copilot mode.
@@ -33,10 +36,8 @@ export class DialogueManager {
   private readonly llmClient: ReturnType<typeof createLLMClient>;
   private readonly approvalManager: ActionApprovalManager;
   private readonly maxHistoryLength: number;
-  private readonly intelTools: ReturnType<typeof createIntelTools>;
-  private readonly toolDefinitions: ToolDefinition[];
   private readonly writerAgent: WriterAgent;
-  private currentSessionHash: string;
+  private readonly previousSnapshots: Map<string, BfisContextSnapshot>;
 
   constructor(
     private readonly config: BfisConfig,
@@ -46,41 +47,20 @@ export class DialogueManager {
     private readonly snapshotReader: SnapshotReader
   ) {
     this.conversationHistory = new Map();
-    this.llmClient = createLLMClient(config);
+    this.llmClient = createLLMClient(config, logger);
     this.approvalManager = new ActionApprovalManager(
       logger,
       config.chat?.approvalTimeoutMs ?? 300000
     );
     this.maxHistoryLength = config.chat?.maxHistoryLength ?? 20;
-    this.currentSessionHash = "default";
-    
-    // Initialize Intel tools for LLM (LangChain format)
-    this.intelTools = createIntelTools(
-      this.intelAgent,
-      this.snapshotReader,
-      this.currentSessionHash
-    );
-
-    // Convert LangChain tools to ToolDefinition format for LLMClient
-    this.toolDefinitions = this.intelTools.map(tool => ({
-      name: tool.name,
-      description: tool.description,
-      schema: tool.schema,
-      invoke: async (args: unknown) => {
-        // LangChain tools expect args to be passed directly
-        const result = await tool.invoke(args);
-        return typeof result === 'string' ? result : JSON.stringify(result);
-      },
-    }));
-
-    // Initialize Writer agent for command execution
+    this.previousSnapshots = new Map();
     this.writerAgent = new WriterAgent(config, logger);
 
     this.logger.info("bfis-dialogue-manager-initialized", {
       maxHistoryLength: this.maxHistoryLength,
       approvalTimeoutMs: config.chat?.approvalTimeoutMs ?? 300000,
-      intelToolsCount: this.intelTools.length,
-      toolDefinitionsCount: this.toolDefinitions.length,
+      intelToolsCount: 3,
+      toolDefinitionsCount: 3,
       timestamp: new Date().toISOString(),
     });
   }
@@ -116,6 +96,47 @@ export class DialogueManager {
     this.addToHistory(input.sessionId, humanMessage);
 
     try {
+      // Fetch snapshot once for this message to guarantee consistent state across tools/proposals
+      const snapshot = await this.snapshotReader.readContextOnce();
+
+      // Build intel summary and mission context from the same snapshot
+      const intelSummary = await this.intelAgent.buildSummary(snapshot);
+      const missionContext: MissionContext = {
+        missionId: snapshot.base.missionId,
+        serverId: snapshot.base.serverId,
+        sessionHash: snapshot.base.sessionHash,
+        hostilitiesStarted: snapshot.hostility.hostilitiesStarted,
+        time: snapshot.base.time,
+      };
+      this.logger.debug("bfis-dialogue-context-built", {
+        sessionId: input.sessionId,
+        snapshotId: snapshot.base.snapshotId,
+        hostilitiesStarted: missionContext.hostilitiesStarted,
+        unitCounts: intelSummary.unitCounts,
+      });
+
+      // Initialize Intel tools for this request (snapshot injected)
+      const intelTools = createIntelTools(this.intelAgent, {
+        snapshot,
+        sessionId: input.sessionId,
+        previousSnapshots: this.previousSnapshots,
+      });
+
+      // Convert LangChain tools to ToolDefinition format for LLMClient
+      const toolDefinitions: ToolDefinition[] = intelTools.map(tool => ({
+        name: tool.name,
+        description: tool.description,
+        schema: tool.schema,
+        invoke: async (args: unknown) => {
+          // Merge provided args with snapshot/sessionId so tools do not refetch
+          const toolArgs = typeof args === "object" && args !== null
+            ? { ...(args as Record<string, unknown>), snapshot }
+            : { snapshot };
+          const result = await tool.invoke(toolArgs);
+          return result;
+        },
+      }));
+
       // Check if LLM is available
       const llmAvailable = await this.llmClient.isAvailable();
       if (!llmAvailable) {
@@ -137,7 +158,7 @@ export class DialogueManager {
       // Call LLM with Intel tool access (tools are now properly registered)
       const llmResponse = await this.llmClient.invokeWithTools(
         prompt,
-        this.toolDefinitions,
+        toolDefinitions,
         {
           temperature: 0.7,
           maxTokens: 4000,
@@ -160,7 +181,8 @@ export class DialogueManager {
       const parsedResponse = await this.parseLLMResponse(
         llmResponse.content,
         input.sessionId,
-        input.sessionHash
+        snapshot,
+        missionContext
       );
 
       // Add assistant message to conversation history
@@ -224,7 +246,8 @@ export class DialogueManager {
       // Process approval
       const pendingDecision = await this.approvalManager.processApproval(
         input.decisionId,
-        input.approved
+        input.approved,
+        input.sessionId
       );
 
       if (!input.approved) {
@@ -268,6 +291,20 @@ export class DialogueManager {
         "landAt",
         "holdPosition",
       ];
+
+      // Hostility safety: strip ATTACK actions if hostilities have not started
+      if (!snapshot.hostility.hostilitiesStarted) {
+        const attackActions = finalizedDecision.actions.filter(a => a.type === "ATTACK");
+        if (attackActions.length > 0) {
+          this.logger.warn("bfis-approval-attack-stripped", {
+            decisionId: finalizedDecision.decisionId,
+            attackCount: attackActions.length,
+            reason: "Hostilities not started",
+            snapshotId: snapshot.base.snapshotId,
+          });
+          finalizedDecision.actions = finalizedDecision.actions.filter(a => a.type !== "ATTACK");
+        }
+      }
 
       const commandResults = await this.writerAgent.executeCommands(
         {
@@ -348,10 +385,12 @@ export class DialogueManager {
 - You should query battlefield intelligence when needed to answer questions
 - When proposing actions, provide clear reasoning for each action
 - Respect hostilities status - no ATTACK actions before hostilities start
+- Do NOT use any special channel or function-call markup (for example <|channel|>, to=container.exec, to=functions.*); respond in plain text or in the JSON formats described below
 
 **Available Tools:**
 - \`get_battlefield_summary\`: Get current battlefield state with unit counts, positions, threats, and key locations
 - \`get_unit_info\`: Query specific units by coalition, category, or zone
+- \`get_aircraft_breakdown\`: Get aircraft counts by type (e.g., IL-76, B-1B) with samples
 - \`get_recent_changes\`: Detect what changed since last check (new units, destroyed units, movements)
 
 **Conversation History:**
@@ -366,6 +405,8 @@ ${input.message}
 3. If proposing actions, format your response as:
    - Text explanation of what you're proposing and why
    - JSON decision block with actions (if proposing actions)
+4. If no tool is needed, respond in plain language only (no JSON, no special tags)
+5. If using a tool, respond with ONLY valid JSON: {"tool": "<tool_name>", "arguments": {...}}
 
 **Response Format:**
 Provide a natural language response. If you want to propose actions, include a JSON block at the end with this structure:
@@ -391,13 +432,13 @@ Respond naturally and helpfully to the human's message.`;
    *
    * @param llmContent - Raw LLM response content
    * @param sessionId - Session ID for tracking
-   * @param sessionHash - Session hash for snapshot context
    * @returns Parsed dialogue response
    */
   private async parseLLMResponse(
     llmContent: string,
     sessionId: string,
-    sessionHash: string
+    snapshot: BfisContextSnapshot,
+    missionContext: MissionContext
   ): Promise<DialogueResponse> {
     // Check if LLM is proposing actions (look for JSON block)
     const jsonMatch = llmContent.match(/```json\s*(\{[\s\S]*?\})\s*```/);
@@ -408,42 +449,15 @@ Respond naturally and helpfully to the human's message.`;
 
         if (proposalData.proposeActions && proposalData.actions) {
           // Generate decision via Commander agent
-          // Note: We need Intel summary but generateSummary is private
-          // For now, we'll use the Commander agent directly with a minimal Intel summary
-          // This will be improved when Intel agent exposes a public method
-          const snapshot = await this.snapshotReader.readContextOnce();
-          
-          // Build minimal tactical summary from snapshot
-          const intelSummary = {
+          const decision: BfisDecision = {
+            decisionId: proposalData.decisionId || uuidv4(),
+            actions: proposalData.actions,
+            reasoningNotes: proposalData.reasoning || "No reasoning provided",
             snapshotId: snapshot.base.snapshotId,
-            snapshotTime: snapshot.base.time || new Date().toISOString(),
-            unitCounts: {
-              BLUE: snapshot.base.units.filter(u => u.coalition === "BLUE").length,
-              RED: snapshot.base.units.filter(u => u.coalition === "RED").length,
-              NEUTRAL: snapshot.base.units.filter(u => u.coalition === "NEUTRAL").length,
-              UNKNOWN: snapshot.base.units.filter(u => !u.coalition || u.coalition === "UNKNOWN").length,
-            },
-            categoryCounts: {},
-            keyPositions: [],
-            threats: [],
+            missionId: missionContext.missionId,
+            serverId: missionContext.serverId,
+            model: this.config.llm.model,
           };
-          
-          const missionContext: MissionContext = {
-            missionId: snapshot.base.missionId || "unknown",
-            serverId: snapshot.base.serverId || "unknown",
-            sessionHash: snapshot.base.sessionHash,
-            hostilitiesStarted: false, // Default to false for safety
-            time: snapshot.base.time || new Date().toISOString(),
-          };
-
-          // Create decision with proposed actions
-          const decision = await this.commanderAgent.makeDecision({
-            intelSummary,
-            missionContext,
-            changes: undefined,
-            previousDecision: undefined,
-            playerIntent: proposalData.reasoning,
-          });
 
           // Store decision for approval
           const decisionId = await this.approvalManager.proposeDecision(decision, sessionId);

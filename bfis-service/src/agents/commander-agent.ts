@@ -35,7 +35,7 @@ export class CommanderAgent {
     private readonly config: BfisConfig,
     private readonly logger: StructuredLogger
   ) {
-    this.llmClient = createLLMClient(config);
+    this.llmClient = createLLMClient(config, logger);
     this.enableRulesFallback = config.agents?.commander.enableRulesFallback ?? true;
     this.maxActionsPerDecision = config.agents?.commander.maxActionsPerDecision ?? 10;
   }

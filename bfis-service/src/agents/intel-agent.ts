@@ -70,7 +70,7 @@ export class IntelAgent {
 
       // Generate tactical summary
       const summaryStartTime = Date.now();
-      const summary = await this.generateSummary(currentSnapshot);
+      const summary = await this.buildSummary(currentSnapshot);
       const summaryDuration = Date.now() - summaryStartTime;
       
       this.logger.debug("bfis-intel-summary-complete", {
@@ -162,7 +162,7 @@ export class IntelAgent {
    * @param snapshot - Battlefield snapshot
    * @returns Tactical summary
    */
-  private async generateSummary(snapshot: BfisContextSnapshot): Promise<TacticalSummary> {
+  async buildSummary(snapshot: BfisContextSnapshot): Promise<TacticalSummary> {
     // Count units by coalition
     const unitCounts: Record<OlympusCoalition, number> = {
       BLUE: 0,
@@ -265,7 +265,7 @@ export class IntelAgent {
    * @param previous - Previous snapshot
    * @returns Snapshot delta or null if no changes detected
    */
-  private async detectChanges(
+  async detectChanges(
     current: BfisContextSnapshot,
     previous: BfisContextSnapshot
   ): Promise<SnapshotDelta | null> {

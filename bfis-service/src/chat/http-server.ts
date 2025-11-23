@@ -51,8 +51,10 @@ export function createChatServer(
   app.use(express.json());
 
   // Serve static files from public directory (HTML test page)
-  // Use absolute path based on working directory (dev mode)
-  const publicPath = path.join(process.cwd(), "src", "chat", "public");
+  // Prefer built path next to compiled output, fall back to source path in dev
+  const builtPublicPath = path.join(__dirname, "public");
+  const sourcePublicPath = path.join(process.cwd(), "src", "chat", "public");
+  const publicPath = existsSync(path.join(builtPublicPath, "index.html")) ? builtPublicPath : sourcePublicPath;
   const indexPath = path.join(publicPath, "index.html");
   
   logger.info("bfis-static-files-setup", {

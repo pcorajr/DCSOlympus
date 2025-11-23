@@ -82,10 +82,11 @@ export class ActionApprovalManager {
    *
    * @param decisionId - Decision ID to approve/reject
    * @param approved - Whether to approve (true) or reject (false)
+   * @param sessionId - Session ID attempting approval (must match pending decision)
    * @returns Pending decision with updated status
    * @throws Error if decision not found, already processed, or expired
    */
-  async processApproval(decisionId: string, approved: boolean): Promise<PendingDecision> {
+  async processApproval(decisionId: string, approved: boolean, sessionId: string): Promise<PendingDecision> {
     const pending = this.pendingDecisions.get(decisionId);
 
     if (!pending) {
@@ -94,6 +95,17 @@ export class ActionApprovalManager {
         timestamp: new Date().toISOString(),
       });
       throw new Error(`Decision not found: ${decisionId}`);
+    }
+
+    // Enforce session binding to prevent cross-session approvals
+    if (pending.sessionId !== sessionId) {
+      this.logger.error("bfis-approval-session-mismatch", {
+        decisionId,
+        pendingSessionId: pending.sessionId,
+        attemptedSessionId: sessionId,
+        timestamp: new Date().toISOString(),
+      });
+      throw new Error(`Decision not found for session: ${sessionId}`);
     }
 
     // Check if already processed

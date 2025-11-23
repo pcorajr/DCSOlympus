@@ -53,8 +53,8 @@ export class WriterAgent {
     approved?: boolean,
     approvedBy?: string
   ): Promise<CommandResult[]> {
-    // Spec-005: Enforce approval requirement in chat mode
-    if (approved === false) {
+    // Spec-005: Enforce approval requirement in chat mode (must be explicitly true)
+    if (approved !== true) {
       this.logger.warn("bfis-writer-unapproved-execution-blocked", {
         decisionId: input.decision.decisionId,
         timestamp: new Date().toISOString(),

@@ -401,7 +401,11 @@ export class Orchestrator {
 
       const writerAgent = new WriterAgent(this.config, this.logger);
       const writerInput = this.buildWriterInput(state);
-      const commandResults = await writerAgent.executeCommands(writerInput);
+      const commandResults = await writerAgent.executeCommands(
+        writerInput,
+        true, // autonomous mode explicitly approves
+        "autonomous"
+      );
 
       this.logger.debug("bfis-orchestrator-writer-output", {
         cycleId: state.cycleId,
