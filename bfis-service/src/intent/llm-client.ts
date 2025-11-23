@@ -151,34 +151,55 @@ class OllamaClient implements LLMClient {
 
     const toolAwarePrompt = `${prompt}
 
-AVAILABLE TOOLS:
+AVAILABLE TOOLS (ONLY use these - do not invent or call other tools):
 ${toolDescriptions}
 
 TOOL CALLING PROTOCOL:
-If you need to call a tool to answer the question, respond with ONLY a JSON object in this exact format:
+IMPORTANT: If you need to call a tool to answer the question, you MUST respond with ONLY a valid JSON object in this EXACT format (no other text, no markdown, no code blocks, no special tags):
 {"tool": "<tool_name>", "arguments": {<args>}}
 
-If you don't need a tool, respond normally in natural language.
+Example for get_battlefield_summary:
+{"tool": "get_battlefield_summary", "arguments": {}}
+
+Example for get_unit_info:
+{"tool": "get_unit_info", "arguments": {"coalition": "BLUE", "category": "aircraft"}}
+
+CRITICAL: 
+- ONLY use the tools listed above (get_battlefield_summary, get_unit_info, get_recent_changes)
+- Do NOT call any other tools like "container.exec", "python", "bash", or any system commands
+- Do NOT use special formatting like <|channel|> or <|message|> tags
+- If you don't need a tool, respond normally in natural language
+- If calling a tool, use ONLY plain JSON: {"tool": "...", "arguments": {...}}
 
 Your response:`;
 
     // First LLM call: check if tool is needed
     const firstResponse = await this.invoke(toolAwarePrompt, options);
     
+    // Log raw response for debugging
+    console.log('[LLMstudioClient] First response (first 500 chars):', firstResponse.content.substring(0, 500));
+    
     // Try to parse as tool call
     const toolCall = this.parseToolCall(firstResponse.content);
     
     if (!toolCall) {
+      // No tool call detected - check if it looks like a tool call format that failed to parse
+      if (firstResponse.content.includes('<|') && firstResponse.content.includes('message|>')) {
+        console.warn('[LLMstudioClient] Response contains tool call format but parsing failed:', firstResponse.content.substring(0, 300));
+      }
       // No tool call - return natural language response
       return firstResponse;
     }
+    
+    console.log('[LLMstudioClient] Parsed tool call:', toolCall);
 
     // Execute the requested tool
     const tool = tools.find(t => t.name === toolCall.toolName);
     if (!tool) {
-      // Tool not found - return error message
+      // Tool not found - return error message and list available tools
+      const availableTools = tools.map(t => `- ${t.name}: ${t.description}`).join('\n');
       return {
-        content: `Error: Tool '${toolCall.toolName}' not found. Available tools: ${tools.map(t => t.name).join(', ')}`,
+        content: `I apologize, but the tool '${toolCall.toolName}' is not available. Here are the tools I can use:\n\n${availableTools}\n\nPlease rephrase your question so I can use one of these available tools to help you.`,
         usage: firstResponse.usage,
       };
     }
@@ -215,26 +236,114 @@ Using this information, please answer the user's question in natural language:`;
   /**
    * Parse LLM response to detect tool call requests.
    * 
+   * Handles multiple formats:
+   * - <|start|>assistant<|channel|>commentary to=functions.get_unit_info <|constrain|>json<|message|>{JSON}
+   * - <|channel|>commentary to=tool.get_battlefield_summary <|constrain|>json<|message|>{JSON}
+   * - Plain JSON: {"tool": "...", "arguments": {...}}
+   * 
    * @param content - LLM response content
    * @returns Parsed tool call or null if not a tool call
    */
   private parseToolCall(content: string): { toolName: string; arguments: Record<string, unknown> } | null {
     try {
-      // Try to extract JSON from response (handle cases where LLM adds extra text)
-      const jsonMatch = content.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) return null;
-
-      const parsed = JSON.parse(jsonMatch[0]);
+      // Check if this looks like a tool call format (contains special tags)
+      const hasToolCallFormat = content.includes('<|') && (content.includes('message|>') || content.includes('channel|>'));
       
+      let jsonContent: string | null = null;
+      let toolName: string | null = null;
+      
+      if (hasToolCallFormat) {
+        // Extract JSON from <|message|> tag
+        // Handle both formats: <|message|>{JSON} and <|message|>\n{JSON}
+        // Use balanced brace matching to handle nested objects
+        const messageTagIndex = content.indexOf('<|message|>');
+        if (messageTagIndex !== -1) {
+          const afterTag = content.substring(messageTagIndex + '<|message|>'.length);
+          // Find the first { and then match balanced braces
+          const braceStart = afterTag.indexOf('{');
+          if (braceStart !== -1) {
+            let braceCount = 0;
+            let jsonEnd = braceStart;
+            for (let i = braceStart; i < afterTag.length; i++) {
+              if (afterTag[i] === '{') braceCount++;
+              if (afterTag[i] === '}') braceCount--;
+              if (braceCount === 0) {
+                jsonEnd = i + 1;
+                break;
+              }
+            }
+            if (braceCount === 0) {
+              jsonContent = afterTag.substring(braceStart, jsonEnd);
+            }
+          }
+        }
+        
+        // Try to extract tool name from the format
+        // Examples: "to=functions.get_unit_info" or "to=tool.get_battlefield_summary"
+        // Strip the "functions." or "tool." prefix to get the actual tool name
+        const toolNameMatch = content.match(/to=(?:functions|tool)\.([a-z_]+)/i);
+        if (toolNameMatch) {
+          toolName = toolNameMatch[1]; // Already extracted without prefix
+        }
+      }
+      
+      // If we didn't extract JSON from message tag, try other methods
+      if (!jsonContent) {
+        // Try to extract JSON from response (handle cases where LLM adds extra text)
+        // Look for JSON objects that might be wrapped in markdown code blocks
+        let jsonMatch = content.match(/```json\s*(\{[\s\S]*?\})\s*```/);
+        if (!jsonMatch) {
+          jsonMatch = content.match(/```\s*(\{[\s\S]*?\})\s*```/);
+        }
+        if (!jsonMatch) {
+          jsonMatch = content.match(/\{[\s\S]*\}/);
+        }
+        if (jsonMatch) {
+          jsonContent = jsonMatch[1] || jsonMatch[0];
+        }
+      }
+      
+      if (!jsonContent || !jsonContent.trim().startsWith('{')) {
+        return null;
+      }
+
+      let parsed: any;
+      try {
+        parsed = JSON.parse(jsonContent);
+      } catch (parseError) {
+        // If JSON parsing fails, try to extract a valid JSON object
+        const jsonMatch = jsonContent.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          try {
+            parsed = JSON.parse(jsonMatch[0]);
+          } catch {
+            return null;
+          }
+        } else {
+          return null;
+        }
+      }
+      
+      // Check if JSON has tool field, or use extracted tool name
       if (parsed.tool && typeof parsed.tool === 'string') {
         return {
           toolName: parsed.tool,
           arguments: parsed.arguments || {},
         };
+      } else if (toolName) {
+        // Use extracted tool name from the format string
+        // Arguments might be in the parsed object directly (e.g., {"coalition":"RED"})
+        // or in an "arguments" field
+        return {
+          toolName: toolName,
+          arguments: parsed.arguments || parsed || {},
+        };
       }
       
       return null;
-    } catch {
+    } catch (error) {
+      // Log parsing errors for debugging
+      console.warn('[OllamaClient] Failed to parse tool call:', error, 'Content:', content.substring(0, 200));
       return null;
     }
   }
@@ -311,34 +420,55 @@ class LLMstudioClient implements LLMClient {
 
     const toolAwarePrompt = `${prompt}
 
-AVAILABLE TOOLS:
+AVAILABLE TOOLS (ONLY use these - do not invent or call other tools):
 ${toolDescriptions}
 
 TOOL CALLING PROTOCOL:
-If you need to call a tool to answer the question, respond with ONLY a JSON object in this exact format:
+IMPORTANT: If you need to call a tool to answer the question, you MUST respond with ONLY a valid JSON object in this EXACT format (no other text, no markdown, no code blocks, no special tags):
 {"tool": "<tool_name>", "arguments": {<args>}}
 
-If you don't need a tool, respond normally in natural language.
+Example for get_battlefield_summary:
+{"tool": "get_battlefield_summary", "arguments": {}}
+
+Example for get_unit_info:
+{"tool": "get_unit_info", "arguments": {"coalition": "BLUE", "category": "aircraft"}}
+
+CRITICAL: 
+- ONLY use the tools listed above (get_battlefield_summary, get_unit_info, get_recent_changes)
+- Do NOT call any other tools like "container.exec", "python", "bash", or any system commands
+- Do NOT use special formatting like <|channel|> or <|message|> tags
+- If you don't need a tool, respond normally in natural language
+- If calling a tool, use ONLY plain JSON: {"tool": "...", "arguments": {...}}
 
 Your response:`;
 
     // First LLM call: check if tool is needed
     const firstResponse = await this.invoke(toolAwarePrompt, options);
     
+    // Log raw response for debugging
+    console.log('[LLMstudioClient] First response (first 500 chars):', firstResponse.content.substring(0, 500));
+    
     // Try to parse as tool call
     const toolCall = this.parseToolCall(firstResponse.content);
     
     if (!toolCall) {
+      // No tool call detected - check if it looks like a tool call format that failed to parse
+      if (firstResponse.content.includes('<|') && firstResponse.content.includes('message|>')) {
+        console.warn('[LLMstudioClient] Response contains tool call format but parsing failed:', firstResponse.content.substring(0, 300));
+      }
       // No tool call - return natural language response
       return firstResponse;
     }
+    
+    console.log('[LLMstudioClient] Parsed tool call:', toolCall);
 
     // Execute the requested tool
     const tool = tools.find(t => t.name === toolCall.toolName);
     if (!tool) {
-      // Tool not found - return error message
+      // Tool not found - return error message and list available tools
+      const availableTools = tools.map(t => `- ${t.name}: ${t.description}`).join('\n');
       return {
-        content: `Error: Tool '${toolCall.toolName}' not found. Available tools: ${tools.map(t => t.name).join(', ')}`,
+        content: `I apologize, but the tool '${toolCall.toolName}' is not available. Here are the tools I can use:\n\n${availableTools}\n\nPlease rephrase your question so I can use one of these available tools to help you.`,
         usage: firstResponse.usage,
       };
     }
@@ -375,26 +505,114 @@ Using this information, please answer the user's question in natural language:`;
   /**
    * Parse LLM response to detect tool call requests.
    * 
+   * Handles multiple formats:
+   * - <|start|>assistant<|channel|>commentary to=functions.get_unit_info <|constrain|>json<|message|>{JSON}
+   * - <|channel|>commentary to=tool.get_battlefield_summary <|constrain|>json<|message|>{JSON}
+   * - Plain JSON: {"tool": "...", "arguments": {...}}
+   * 
    * @param content - LLM response content
    * @returns Parsed tool call or null if not a tool call
    */
   private parseToolCall(content: string): { toolName: string; arguments: Record<string, unknown> } | null {
     try {
-      // Try to extract JSON from response (handle cases where LLM adds extra text)
-      const jsonMatch = content.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) return null;
-
-      const parsed = JSON.parse(jsonMatch[0]);
+      // Check if this looks like a tool call format (contains special tags)
+      const hasToolCallFormat = content.includes('<|') && (content.includes('message|>') || content.includes('channel|>'));
       
+      let jsonContent: string | null = null;
+      let toolName: string | null = null;
+      
+      if (hasToolCallFormat) {
+        // Extract JSON from <|message|> tag
+        // Handle both formats: <|message|>{JSON} and <|message|>\n{JSON}
+        // Use balanced brace matching to handle nested objects
+        const messageTagIndex = content.indexOf('<|message|>');
+        if (messageTagIndex !== -1) {
+          const afterTag = content.substring(messageTagIndex + '<|message|>'.length);
+          // Find the first { and then match balanced braces
+          const braceStart = afterTag.indexOf('{');
+          if (braceStart !== -1) {
+            let braceCount = 0;
+            let jsonEnd = braceStart;
+            for (let i = braceStart; i < afterTag.length; i++) {
+              if (afterTag[i] === '{') braceCount++;
+              if (afterTag[i] === '}') braceCount--;
+              if (braceCount === 0) {
+                jsonEnd = i + 1;
+                break;
+              }
+            }
+            if (braceCount === 0) {
+              jsonContent = afterTag.substring(braceStart, jsonEnd);
+            }
+          }
+        }
+        
+        // Try to extract tool name from the format
+        // Examples: "to=functions.get_unit_info" or "to=tool.get_battlefield_summary"
+        // Strip the "functions." or "tool." prefix to get the actual tool name
+        const toolNameMatch = content.match(/to=(?:functions|tool)\.([a-z_]+)/i);
+        if (toolNameMatch) {
+          toolName = toolNameMatch[1]; // Already extracted without prefix
+        }
+      }
+      
+      // If we didn't extract JSON from message tag, try other methods
+      if (!jsonContent) {
+        // Try to extract JSON from response (handle cases where LLM adds extra text)
+        // Look for JSON objects that might be wrapped in markdown code blocks
+        let jsonMatch = content.match(/```json\s*(\{[\s\S]*?\})\s*```/);
+        if (!jsonMatch) {
+          jsonMatch = content.match(/```\s*(\{[\s\S]*?\})\s*```/);
+        }
+        if (!jsonMatch) {
+          jsonMatch = content.match(/\{[\s\S]*\}/);
+        }
+        if (jsonMatch) {
+          jsonContent = jsonMatch[1] || jsonMatch[0];
+        }
+      }
+      
+      if (!jsonContent || !jsonContent.trim().startsWith('{')) {
+        return null;
+      }
+
+      let parsed: any;
+      try {
+        parsed = JSON.parse(jsonContent);
+      } catch (parseError) {
+        // If JSON parsing fails, try to extract a valid JSON object
+        const jsonMatch = jsonContent.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          try {
+            parsed = JSON.parse(jsonMatch[0]);
+          } catch {
+            return null;
+          }
+        } else {
+          return null;
+        }
+      }
+      
+      // Check if JSON has tool field, or use extracted tool name
       if (parsed.tool && typeof parsed.tool === 'string') {
         return {
           toolName: parsed.tool,
           arguments: parsed.arguments || {},
         };
+      } else if (toolName) {
+        // Use extracted tool name from the format string
+        // Arguments might be in the parsed object directly (e.g., {"coalition":"RED"})
+        // or in an "arguments" field
+        return {
+          toolName: toolName,
+          arguments: parsed.arguments || parsed || {},
+        };
       }
       
       return null;
-    } catch {
+    } catch (error) {
+      // Log parsing errors for debugging
+      console.warn('[LLMstudioClient] Failed to parse tool call:', error, 'Content:', content.substring(0, 200));
       return null;
     }
   }

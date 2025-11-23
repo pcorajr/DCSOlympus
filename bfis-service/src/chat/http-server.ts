@@ -13,6 +13,9 @@
 
 import express, { type Request, type Response, type NextFunction } from "express";
 import cors from "cors";
+import path from "path";
+import { fileURLToPath } from "url";
+import { existsSync, readFileSync } from "fs";
 import type { BfisConfig } from "../config/config.js";
 import type { StructuredLogger } from "../logger/structured-logger.js";
 import type { DialogueManager } from "./dialogue-manager.js";
@@ -23,6 +26,10 @@ import type {
   ChatApprovalResponse,
   ChatHistoryResponse,
 } from "./types.js";
+
+// ES module __dirname equivalent
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 /**
  * Create and configure Express HTTP server for BFIS chat interface.
@@ -42,6 +49,56 @@ export function createChatServer(
   // Middleware
   app.use(cors());
   app.use(express.json());
+
+  // Serve static files from public directory (HTML test page)
+  // Use absolute path based on working directory (dev mode)
+  const publicPath = path.join(process.cwd(), "src", "chat", "public");
+  const indexPath = path.join(publicPath, "index.html");
+  
+  logger.info("bfis-static-files-setup", {
+    publicPath,
+    indexPath,
+    exists: existsSync(indexPath),
+    cwd: process.cwd(),
+    timestamp: new Date().toISOString(),
+  });
+  
+  // Explicit route for root to serve index.html
+  // Read and serve HTML content directly to avoid path resolution issues
+  app.get("/", (req: Request, res: Response) => {
+    logger.info("bfis-root-route-hit", {
+      indexPath,
+      exists: existsSync(indexPath),
+      timestamp: new Date().toISOString(),
+    });
+    
+    if (!existsSync(indexPath)) {
+      logger.error("bfis-index-not-found", {
+        indexPath,
+        publicPath,
+        cwd: process.cwd(),
+        timestamp: new Date().toISOString(),
+      });
+      return res.status(404).json({ error: "Index page not found", path: indexPath });
+    }
+    
+    try {
+      const htmlContent = readFileSync(indexPath, "utf-8");
+      res.setHeader("Content-Type", "text/html");
+      return res.send(htmlContent);
+    } catch (err) {
+      const error = err as Error;
+      logger.error("bfis-readfile-error", {
+        error: error.message,
+        indexPath,
+        timestamp: new Date().toISOString(),
+      });
+      return res.status(500).json({ error: "Failed to read index page", message: error.message });
+    }
+  });
+  
+  // Serve static files from public directory
+  app.use(express.static(publicPath));
 
   // Request logging middleware
   app.use((req: Request, res: Response, next: NextFunction) => {
